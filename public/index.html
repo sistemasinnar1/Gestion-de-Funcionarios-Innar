@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>Innar Gestión — Archivo institucional</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <link rel="preload" as="image" href="/images/logo3.webp" fetchpriority="high">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="splashScreen">
+    <img src="/images/logo3.webp" alt="Logo" class="splash-logo" width="323" height="100" fetchpriority="high"/>
+    <div class="splash-text">Abriendo archivo</div>
+    <div class="splash-spinner"></div>
+  </div>
+
+  <div id="view-login" class="view-login hidden">
+    <section class="login-brand">
+      <img src="/images/logo3.webp" alt="Instituto Neurociencias de Nariño" class="brand-logo" width="323" height="100"/>
+      <p class="brand-kicker">Instituto Neurociencias de Nariño IPS S.A.S</p>
+      <h1>Archivo institucional</h1>
+      <p class="brand-lead">Hojas de vida, requisitos, contratos y documentos con control de vencimiento. Acceso solo con contraseña temporal enviada al correo.</p>
+      <ul class="brand-list">
+        <li>Expedientes de funcionarios</li>
+        <li>Requisitos y alertas de vencimiento</li>
+        <li>Contratos, facturas e inventario</li>
+      </ul>
+      <div class="folder-stack" aria-hidden="true">
+        <span class="folder f1"></span>
+        <span class="folder f2"></span>
+        <span class="folder f3"></span>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <div class="paper-card">
+        <div class="paper-stamp">Acceso restringido</div>
+        <h2>Entrar al archivo</h2>
+        <p id="loginLead" class="panel-lead">Ingresa tu correo institucional. Te enviaremos una contraseña de un solo uso, válida por 10 minutos.</p>
+
+        <div id="localHint" class="local-hint hidden"></div>
+
+        <form id="formEmail" class="login-form">
+          <div class="form-group">
+            <label for="loginEmail">Correo institucional</label>
+            <input id="loginEmail" type="email" placeholder="nombre@institucion.com" autocomplete="username" required maxlength="190"/>
+          </div>
+          <div id="emailError" class="login-error hidden"></div>
+          <button type="submit" id="btnSolicitar" class="btn-login">Enviar contraseña temporal</button>
+        </form>
+
+        <form id="formCodigo" class="login-form hidden">
+          <div class="form-group">
+            <label for="loginCodigo">Contraseña temporal</label>
+            <input id="loginCodigo" type="text" inputmode="text" autocomplete="one-time-code" placeholder="XXXX-XXXX" maxlength="9" required spellcheck="false"/>
+            <p class="field-hint">Revisa tu correo. La clave caduca pronto y no se reutiliza.</p>
+          </div>
+          <div id="devCodeBox" class="dev-code hidden">
+            <span>Entorno local — SMTP no configurado</span>
+            <strong id="devCodeValue"></strong>
+          </div>
+          <div id="codeError" class="login-error hidden"></div>
+          <button type="submit" id="btnVerificar" class="btn-login">Validar e ingresar</button>
+          <button type="button" id="btnOtraCuenta" class="btn-ghost">Usar otro correo</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div id="view-home" class="view-home hidden">
+    <header class="menu-header">
+      <div class="header-brand">
+        <img src="/images/logo3.webp" alt="Logo" class="menu-logo" width="323" height="100"/>
+        <div>
+          <strong>Innar Gestión</strong>
+          <span>Archivo institucional</span>
+        </div>
+      </div>
+      <div class="menu-user">
+        <span id="menuUserName"></span>
+        <button type="button" id="btnLogout" class="btn-logout">Cerrar sesión</button>
+      </div>
+    </header>
+    <main class="home-content">
+      <div class="home-intro">
+        <h2>Expediente y control documental</h2>
+        <p>Este archivo concentrará las hojas de vida, los requisitos con vencimiento, los contratos y el kardex. Los módulos se irán habilitando por etapas.</p>
+      </div>
+      <div class="module-grid">
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">HV</span>
+          <h3>Hojas de vida</h3>
+          <p>PDF por funcionario, búsqueda por nombre, cargo o área.</p>
+          <em>Próximamente</em>
+        </article>
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">RQ</span>
+          <h3>Documentos y vencimientos</h3>
+          <p>Matriz de requisitos, faltantes y alertas antes de caducar.</p>
+          <em>Próximamente</em>
+        </article>
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">CT</span>
+          <h3>Contratos laborales</h3>
+          <p>Seguimiento de términos, preavisos y fechas clave.</p>
+          <em>Próximamente</em>
+        </article>
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">FC</span>
+          <h3>Facturas</h3>
+          <p>Por pagar y por cobrar, con aviso antes del vencimiento.</p>
+          <em>Próximamente</em>
+        </article>
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">KX</span>
+          <h3>Kardex</h3>
+          <p>Entradas, salidas, stock mínimo y vencimiento de productos.</p>
+          <em>Próximamente</em>
+        </article>
+        <article class="module-card">
+          <span class="module-icon" aria-hidden="true">PR</span>
+          <h3>Protocolos y equipos</h3>
+          <p>Procedimientos institucionales y equipos del edificio.</p>
+          <em>Próximamente</em>
+        </article>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/app.js" defer></script>
+</body>
+</html>
