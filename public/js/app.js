@@ -116,6 +116,7 @@ async function solicitarCodigo(email) {
     const data = await res.json();
     if (!res.ok) {
       let extra = data.error || 'No se pudo solicitar el acceso';
+      if (data.detalle) extra += ` (${data.detalle})`;
       if (res.status === 429 && data.minutos_restantes) {
         extra += `. Intenta en ${data.minutos_restantes} min.`;
       }

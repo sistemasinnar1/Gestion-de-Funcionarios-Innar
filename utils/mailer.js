@@ -1,23 +1,58 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
 
+function smtpUser() {
+  return String(process.env.SMTP_USER || '').trim();
+}
+
+function smtpPass() {
+  return String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
+}
+
+function smtpFrom() {
+  return String(process.env.SMTP_FROM || smtpUser()).trim();
+}
+
 function isConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.SMTP_HOST && smtpUser() && smtpPass());
+}
+
+function isGmail() {
+  const host = String(process.env.SMTP_HOST || '').toLowerCase();
+  const user = smtpUser().toLowerCase();
+  return host.includes('gmail.com') || user.endsWith('@gmail.com');
 }
 
 function getTransport() {
+  const user = smtpUser();
+  const pass = smtpPass();
+
+  if (isGmail()) {
+    return nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user, pass },
+      connectionTimeout: 12000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000
+    });
+  }
+
   const port = parseInt(process.env.SMTP_PORT, 10) || 465;
   const secure = process.env.SMTP_SECURE
     ? process.env.SMTP_SECURE === 'true'
     : port === 465;
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
     secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
+    auth: { user, pass },
+    connectionTimeout: 12000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 }
 
@@ -29,12 +64,25 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+async function verifySmtp() {
+  if (!isConfigured()) {
+    return { ok: false, error: 'Faltan SMTP_HOST, SMTP_USER o SMTP_PASS' };
+  }
+  try {
+    await getTransport().verify();
+    return { ok: true, host: isGmail() ? 'smtp.gmail.com:587' : process.env.SMTP_HOST };
+  } catch (err) {
+    logger.error('[MAIL] verify falló', { message: err.message, code: err.code });
+    return { ok: false, error: String(err.message || err).slice(0, 220) };
+  }
+}
+
 async function sendAccessCode({ to, nombre, codigo, minutos }) {
   if (!isConfigured()) {
-    return { sent: false, reason: 'smtp_no_configurado' };
+    return { sent: false, reason: 'smtp_no_configurado', error: 'SMTP no configurado' };
   }
 
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const from = smtpFrom();
   const safeName = escapeHtml(nombre || 'Usuario');
   const safeCode = escapeHtml(codigo);
 
@@ -93,9 +141,16 @@ async function sendAccessCode({ to, nombre, codigo, minutos }) {
     });
     return { sent: true };
   } catch (err) {
-    logger.error('[MAIL] No se pudo enviar la contraseña temporal', { message: err.message });
-    return { sent: false, reason: 'smtp_error' };
+    logger.error('[MAIL] No se pudo enviar la contraseña temporal', {
+      message: err.message,
+      code: err.code
+    });
+    return {
+      sent: false,
+      reason: 'smtp_error',
+      error: String(err.message || err).slice(0, 220)
+    };
   }
 }
 
-module.exports = { isConfigured, sendAccessCode };
+module.exports = { isConfigured, sendAccessCode, verifySmtp };

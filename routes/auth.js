@@ -89,18 +89,7 @@ router.post('/acceso/solicitar', async (req, res) => {
       return res.json(payload);
     }
 
-    await db.execute(
-      'UPDATE access_codes SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL',
-      [user.id]
-    );
-
     const { raw, display } = generateCode();
-    await db.execute(
-      `INSERT INTO access_codes (usuario_id, codigo_hash, expires_at, ip_address)
-       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?)`,
-      [user.id, hashCode(raw), EXPIRY_MINUTES, clientIP]
-    );
-
     const mail = await mailer.sendAccessCode({
       to: user.email,
       nombre: user.nombre,
@@ -108,10 +97,27 @@ router.post('/acceso/solicitar', async (req, res) => {
       minutos: EXPIRY_MINUTES
     });
 
-    if (isLocalAuthMode() && !mail.sent) {
-      payload.modo_local = true;
-      payload.codigo_local = display;
+    if (!mail.sent) {
+      if (isLocalAuthMode()) {
+        payload.modo_local = true;
+        payload.codigo_local = display;
+      } else {
+        return res.status(503).json({
+          error: 'No se pudo enviar el correo. Revisa la contraseña de aplicación de Gmail, el puerto 587 y la carpeta de spam.',
+          detalle: mail.error || mail.reason
+        });
+      }
     }
+
+    await db.execute(
+      'UPDATE access_codes SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL',
+      [user.id]
+    );
+    await db.execute(
+      `INSERT INTO access_codes (usuario_id, codigo_hash, expires_at, ip_address)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?)`,
+      [user.id, hashCode(raw), EXPIRY_MINUTES, clientIP]
+    );
 
     return res.json(payload);
   } catch (e) {

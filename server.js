@@ -56,6 +56,11 @@ function createApp() {
       res.status(503).json({ ok: false, error: e.message });
     }
   });
+  app.get('/api/health/mail', async (_req, res) => {
+    const mailer = require('./utils/mailer');
+    const result = await mailer.verifySmtp();
+    res.status(result.ok ? 200 : 503).json(result);
+  });
 
   app.use('/api', authRoutes);
 
