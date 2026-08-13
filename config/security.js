@@ -20,8 +20,8 @@ function applyHelmet(app) {
         frameAncestors: ["'self'"],
         objectSrc: ["'none'"],
         imgSrc: ["'self'", 'data:'],
-        fontSrc: ["'self'", 'data:'],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         scriptSrc: ["'self'"],
         connectSrc: ["'self'"],
         ...(cspReportOnly ? { upgradeInsecureRequests: null } : {})

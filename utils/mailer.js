@@ -109,7 +109,7 @@ async function sendAccessCode({ to, nombre, codigo, minutos }) {
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8e7;">
         <tr>
           <td style="background:#2d4a47;color:#fff;padding:22px 28px;">
-            <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8;">Archivo institucional</div>
+            <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8;">Gestión Administrativa</div>
             <div style="font-size:20px;font-weight:700;margin-top:4px;">Innar Gestión</div>
           </td>
         </tr>
@@ -117,7 +117,7 @@ async function sendAccessCode({ to, nombre, codigo, minutos }) {
           <td style="padding:28px;">
             <p style="margin:0 0 12px;font-size:16px;">Hola ${safeName},</p>
             <p style="margin:0 0 20px;color:#64748b;line-height:1.5;">
-              Usa esta contraseña temporal para entrar al archivo de documentos, contratos y hojas de vida.
+              Usa este código para ingresar a Gestión Administrativa de INNAR.
               Caduca en <strong>${minutos} minutos</strong> y es de un solo uso.
             </p>
             <div style="background:#f4f7f6;border:1px dashed #8AA6A1;border-radius:12px;padding:18px;text-align:center;letter-spacing:.28em;font-size:26px;font-weight:800;color:#1f3634;font-family:Consolas,monospace;">

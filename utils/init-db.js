@@ -91,6 +91,38 @@ async function initializeDatabase() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS funcionarios (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nombres VARCHAR(120) NOT NULL,
+      apellidos VARCHAR(120) NOT NULL,
+      documento VARCHAR(30) NOT NULL,
+      cargo VARCHAR(120) NULL,
+      area VARCHAR(120) NULL,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_documento (documento),
+      INDEX idx_nombre (nombres, apellidos),
+      INDEX idx_cargo (cargo),
+      INDEX idx_area (area)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS hojas_vida (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      version INT NOT NULL,
+      archivo_nombre VARCHAR(255) NOT NULL,
+      archivo_path VARCHAR(500) NOT NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_funcionario_version (funcionario_id, version),
+      CONSTRAINT fk_hv_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@innar.local').trim().toLowerCase();
   const [rows] = await conn.query('SELECT COUNT(*) AS total FROM usuarios');
   if (rows[0].total === 0) {

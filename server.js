@@ -24,6 +24,7 @@ const { applySession } = require('./config/session');
 const { applySecurity } = require('./config/security');
 const { applyRateLimiters } = require('./config/rate-limit');
 const authRoutes = require('./routes/auth');
+const funcionariosRoutes = require('./routes/funcionarios');
 
 const PACKAGE_VERSION = require('./package.json').version;
 const APP_VERSION = process.env.APP_BUILD_VERSION || PACKAGE_VERSION;
@@ -63,6 +64,7 @@ function createApp() {
   });
 
   app.use('/api', authRoutes);
+  app.use('/api', funcionariosRoutes);
 
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();

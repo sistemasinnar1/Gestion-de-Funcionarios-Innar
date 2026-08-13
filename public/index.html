@@ -3,65 +3,56 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>Innar Gestión — Archivo institucional</title>
+  <title>INNAR — Gestión Administrativa</title>
   <link rel="icon" type="image/png" href="/images/icon.png">
-  <link rel="preload" as="image" href="/images/logo3.webp" fetchpriority="high">
+  <link rel="preload" as="image" href="/images/logo-innar-blanco.png" fetchpriority="high">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div id="splashScreen">
-    <img src="/images/logo3.webp" alt="Logo" class="splash-logo" width="323" height="100" fetchpriority="high"/>
-    <div class="splash-text">Abriendo archivo</div>
+    <img src="/images/logo-innar-blanco.png" alt="INNAR" class="splash-logo" width="640" height="180" fetchpriority="high"/>
+    <div class="splash-text">Cargando</div>
     <div class="splash-spinner"></div>
   </div>
 
   <div id="view-login" class="view-login hidden">
     <section class="login-brand">
-      <img src="/images/logo3.webp" alt="Instituto Neurociencias de Nariño" class="brand-logo" width="323" height="100"/>
-      <p class="brand-kicker">Instituto Neurociencias de Nariño IPS S.A.S</p>
-      <h1>Archivo institucional</h1>
-      <p class="brand-lead">Hojas de vida, requisitos, contratos y documentos con control de vencimiento. Acceso solo con contraseña temporal enviada al correo.</p>
-      <ul class="brand-list">
-        <li>Expedientes de funcionarios</li>
-        <li>Requisitos y alertas de vencimiento</li>
-        <li>Contratos, facturas e inventario</li>
-      </ul>
-      <div class="folder-stack" aria-hidden="true">
-        <span class="folder f1"></span>
-        <span class="folder f2"></span>
-        <span class="folder f3"></span>
-      </div>
+      <img src="/images/logo-innar-blanco.png" alt="INNAR — Instituto Neurociencias de Nariño" class="brand-logo" width="640" height="180"/>
+      <h1>Gestión Administrativa</h1>
     </section>
 
     <section class="login-panel">
       <div class="paper-card">
-        <div class="paper-stamp">Acceso restringido</div>
-        <h2>Entrar al archivo</h2>
-        <p id="loginLead" class="panel-lead">Ingresa tu correo institucional. Te enviaremos una contraseña de un solo uso, válida por 10 minutos.</p>
+        <div class="paper-stamp">Uso interno</div>
+        <h2>¡Bienvenido!</h2>
+        <p id="loginLead" class="panel-lead">Escribe tu correo y te enviamos un código para ingresar. Caduca en 10 minutos.</p>
 
         <div id="localHint" class="local-hint hidden"></div>
 
         <form id="formEmail" class="login-form">
           <div class="form-group">
-            <label for="loginEmail">Correo institucional</label>
-            <input id="loginEmail" type="email" placeholder="nombre@institucion.com" autocomplete="username" required maxlength="190"/>
+            <label for="loginEmail">Correo</label>
+            <input id="loginEmail" type="email" placeholder="tucorreo@gmail.com" autocomplete="username" required maxlength="190"/>
           </div>
           <div id="emailError" class="login-error hidden"></div>
-          <button type="submit" id="btnSolicitar" class="btn-login">Enviar contraseña temporal</button>
+          <button type="submit" id="btnSolicitar" class="btn-login">Enviar código</button>
         </form>
 
         <form id="formCodigo" class="login-form hidden">
           <div class="form-group">
-            <label for="loginCodigo">Contraseña temporal</label>
+            <label for="loginCodigo">Código de acceso</label>
             <input id="loginCodigo" type="text" inputmode="text" autocomplete="one-time-code" placeholder="XXXX-XXXX" maxlength="9" required spellcheck="false"/>
-            <p class="field-hint">Revisa tu correo. La clave caduca pronto y no se reutiliza.</p>
+            <p class="field-hint">Revisa tu bandeja de entrada y el correo no deseado.</p>
           </div>
           <div id="devCodeBox" class="dev-code hidden">
             <span>Entorno local — SMTP no configurado</span>
             <strong id="devCodeValue"></strong>
           </div>
           <div id="codeError" class="login-error hidden"></div>
-          <button type="submit" id="btnVerificar" class="btn-login">Validar e ingresar</button>
+          <button type="submit" id="btnVerificar" class="btn-login">Ingresar</button>
           <button type="button" id="btnOtraCuenta" class="btn-ghost">Usar otro correo</button>
         </form>
       </div>
@@ -71,62 +62,153 @@
   <div id="view-home" class="view-home hidden">
     <header class="menu-header">
       <div class="header-brand">
-        <img src="/images/logo3.webp" alt="Logo" class="menu-logo" width="323" height="100"/>
+        <img src="/images/logo-innar-blanco.png" alt="INNAR" class="menu-logo" width="640" height="180"/>
         <div>
-          <strong>Innar Gestión</strong>
-          <span>Archivo institucional</span>
+          <strong>INNAR</strong>
+          <span>Gestión Administrativa</span>
         </div>
       </div>
       <div class="menu-user">
         <span id="menuUserName"></span>
-        <button type="button" id="btnLogout" class="btn-logout">Cerrar sesión</button>
+        <button type="button" id="btnLogout" class="btn-logout">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4M15 16l5-4-5-4M20 12H9"/></svg>
+          Cerrar sesión
+        </button>
       </div>
     </header>
     <main class="home-content">
       <div class="home-intro">
-        <h2>Expediente y control documental</h2>
-        <p>Este archivo concentrará las hojas de vida, los requisitos con vencimiento, los contratos y el kardex. Los módulos se irán habilitando por etapas.</p>
+        <h2>¿Qué necesitas hoy?</h2>
+        <p>Elige un módulo.</p>
       </div>
       <div class="module-grid">
-        <article class="module-card">
+        <button type="button" class="module-card module-card-btn" id="btnModuloHv" data-module="hv">
           <span class="module-icon" aria-hidden="true">HV</span>
           <h3>Hojas de vida</h3>
-          <p>PDF por funcionario, búsqueda por nombre, cargo o área.</p>
-          <em>Próximamente</em>
-        </article>
-        <article class="module-card">
-          <span class="module-icon" aria-hidden="true">RQ</span>
-          <h3>Documentos y vencimientos</h3>
-          <p>Matriz de requisitos, faltantes y alertas antes de caducar.</p>
-          <em>Próximamente</em>
-        </article>
-        <article class="module-card">
-          <span class="module-icon" aria-hidden="true">CT</span>
-          <h3>Contratos laborales</h3>
-          <p>Seguimiento de términos, preavisos y fechas clave.</p>
-          <em>Próximamente</em>
-        </article>
-        <article class="module-card">
-          <span class="module-icon" aria-hidden="true">FC</span>
-          <h3>Facturas</h3>
-          <p>Por pagar y por cobrar, con aviso antes del vencimiento.</p>
-          <em>Próximamente</em>
-        </article>
-        <article class="module-card">
-          <span class="module-icon" aria-hidden="true">KX</span>
-          <h3>Kardex</h3>
-          <p>Entradas, salidas, stock mínimo y vencimiento de productos.</p>
-          <em>Próximamente</em>
-        </article>
-        <article class="module-card">
-          <span class="module-icon" aria-hidden="true">PR</span>
-          <h3>Protocolos y equipos</h3>
-          <p>Procedimientos institucionales y equipos del edificio.</p>
-          <em>Próximamente</em>
-        </article>
+          <p>Una carpeta por funcionario: ábrela y verás sus documentos.</p>
+        </button>
       </div>
     </main>
   </div>
+
+  <div id="view-hv" class="view-home hidden">
+    <header class="menu-header">
+      <div class="header-brand">
+        <button type="button" class="btn-back" id="btnHvVolver">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"/></svg>
+          Volver
+        </button>
+        <img src="/images/logo-innar-blanco.png" alt="INNAR" class="menu-logo" width="640" height="180"/>
+        <div>
+          <strong>Hojas de vida</strong>
+          <span>Gestión Administrativa</span>
+        </div>
+      </div>
+      <div class="menu-user">
+        <span class="js-user-name"></span>
+        <button type="button" class="btn-logout js-logout">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4M15 16l5-4-5-4M20 12H9"/></svg>
+          Cerrar sesión
+        </button>
+      </div>
+    </header>
+    <main class="home-content hv-content">
+      <div class="hv-toolbar">
+        <input id="hvBuscar" type="search" placeholder="Buscar por nombre, documento, cargo o área" />
+        <button type="button" id="btnHvNuevo" class="btn-action">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+          Nuevo funcionario
+        </button>
+      </div>
+      <div id="hvError" class="login-error hidden"></div>
+      <div id="hvGrid" class="hv-folders"></div>
+      <p id="hvVacio" class="hv-empty hidden">Aún no hay carpetas. Crea el primer funcionario.</p>
+    </main>
+  </div>
+
+  <div id="view-hv-folder" class="view-home hidden">
+    <header class="menu-header">
+      <div class="header-brand">
+        <button type="button" class="btn-back" id="btnHvFolderVolver">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"/></svg>
+          Volver
+        </button>
+        <img src="/images/logo-innar-blanco.png" alt="INNAR" class="menu-logo" width="640" height="180"/>
+        <div>
+          <strong id="hvFolderTitulo">Carpeta</strong>
+          <span id="hvFolderSub">Hojas de vida</span>
+        </div>
+      </div>
+      <div class="menu-user">
+        <span class="js-user-name"></span>
+        <button type="button" class="btn-logout js-logout">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4M15 16l5-4-5-4M20 12H9"/></svg>
+          Cerrar sesión
+        </button>
+      </div>
+    </header>
+    <main class="home-content hv-content">
+      <div class="hv-folder-head">
+        <div>
+          <p id="hvFolderMeta" class="panel-lead"></p>
+        </div>
+        <button type="button" id="btnHvSubir" class="btn-action">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V6m0 0l-4 4m4-4 4 4M5 18h14"/></svg>
+          Subir documento
+        </button>
+      </div>
+      <div id="hvFolderError" class="login-error hidden"></div>
+      <div id="hvDocs" class="hv-docs"></div>
+      <p id="hvDocsVacio" class="hv-empty hidden">Esta carpeta está vacía. Sube la hoja de vida en PDF.</p>
+    </main>
+  </div>
+
+  <dialog id="dlgHvNuevo" class="hv-dialog">
+    <form id="formHvNuevo" class="login-form">
+      <h3>Nuevo funcionario</h3>
+      <div class="form-group">
+        <label for="hvNombres">Nombres</label>
+        <input id="hvNombres" required maxlength="120" />
+      </div>
+      <div class="form-group">
+        <label for="hvApellidos">Apellidos</label>
+        <input id="hvApellidos" required maxlength="120" />
+      </div>
+      <div class="form-group">
+        <label for="hvDocumento">Documento</label>
+        <input id="hvDocumento" required maxlength="30" />
+      </div>
+      <div class="form-group">
+        <label for="hvCargo">Cargo</label>
+        <input id="hvCargo" maxlength="120" />
+      </div>
+      <div class="form-group">
+        <label for="hvArea">Área</label>
+        <input id="hvArea" maxlength="120" />
+      </div>
+      <div class="form-group">
+        <label for="hvPdfNuevo">Hoja de vida (PDF, opcional)</label>
+        <input id="hvPdfNuevo" type="file" accept="application/pdf" />
+      </div>
+      <div id="hvNuevoError" class="login-error hidden"></div>
+      <button type="submit" id="btnHvGuardar" class="btn-login">Guardar</button>
+      <button type="button" id="btnHvNuevoCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvPdf" class="hv-dialog">
+    <form id="formHvPdf" class="login-form">
+      <h3>Subir documento</h3>
+      <p id="hvPdfNombre" class="panel-lead">Hoja de vida (PDF)</p>
+      <div class="form-group">
+        <label for="hvPdfArchivo">Archivo PDF</label>
+        <input id="hvPdfArchivo" type="file" accept="application/pdf" required />
+      </div>
+      <div id="hvPdfError" class="login-error hidden"></div>
+      <button type="submit" id="btnHvPdfGuardar" class="btn-login">Subir</button>
+      <button type="button" id="btnHvPdfCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
 
   <script src="/js/app.js" defer></script>
 </body>
