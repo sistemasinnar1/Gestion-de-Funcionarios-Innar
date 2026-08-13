@@ -102,9 +102,7 @@ async function initializeDatabase() {
     console.log('✓ Usuario inicial creado: superadmin');
   } else {
     await conn.execute(
-      `UPDATE usuarios
-       SET email = ?
-       WHERE usuario = ? AND (email IS NULL OR email = '')`,
+      'UPDATE usuarios SET email = ? WHERE usuario = ?',
       [adminEmail, DEFAULT_ADMIN_USER]
     );
     console.log(`✓ ${rows[0].total} usuario(s) en la base`);

@@ -1,7 +1,7 @@
 const cors = require('cors');
 
 function applyCors(app) {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3001').replace(/\/$/, '');
   const allowedOrigins = [frontendUrl];
   if (process.env.NODE_ENV !== 'production') {
     allowedOrigins.push(
