@@ -896,6 +896,27 @@ body {
   transform: none;
 }
 
+.hv-folder-actions .btn-danger {
+  border-color: #fecaca;
+  background: #fff;
+  color: #9f1239;
+}
+
+.hv-folder-actions .btn-danger:hover {
+  background: #9f1239;
+  border-color: #9f1239;
+  color: #fff;
+}
+
+.btn-login-danger {
+  background: linear-gradient(135deg, #9f1239 0%, #7f1d1d 100%);
+  box-shadow: 0 6px 20px rgba(159, 18, 57, 0.28);
+}
+
+.btn-login-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7f1d1d 0%, #4c0519 100%);
+}
+
 .hv-ficha {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

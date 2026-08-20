@@ -636,7 +636,7 @@ async function abrirCarpeta(id) {
       if (activo) $('hvFichaFoto').setAttribute('data-foto', f.id);
       else $('hvFichaFoto').removeAttribute('data-foto');
     }
-    if ($('btnHvEditar')) $('btnHvEditar').hidden = !activo;
+    if ($('btnHvEditar')) $('btnHvEditar').hidden = false;
     if ($('btnHvInactivar')) $('btnHvInactivar').textContent = activo ? 'Inactivar' : 'Reactivar';
     renderFicha(f, data.progreso);
     renderRequisitos(data.requisitos || [], data.progreso, !activo);
@@ -955,7 +955,7 @@ function setupHojasVida() {
   });
 
   $('btnHvEditar')?.addEventListener('click', () => {
-    if (!hvFolderData?.funcionario || !fichaActiva()) return;
+    if (!hvFolderData?.funcionario) return;
     hvEditId = hvFolderData.funcionario.id;
     setError('hvNuevoError', '');
     llenarFormulario(hvFolderData.funcionario);
@@ -965,6 +965,36 @@ function setupHojasVida() {
   $('btnHvImprimir')?.addEventListener('click', imprimirFicha);
   $('btnHvInactivar')?.addEventListener('click', abrirDialogoEstado);
   $('btnHvInactivarCerrar')?.addEventListener('click', () => $('dlgHvInactivar').close());
+  $('btnHvEliminar')?.addEventListener('click', () => {
+    if (!hvFolderData?.funcionario) return;
+    const f = hvFolderData.funcionario;
+    $('hvEliminarTexto').textContent = `Se va a borrar a ${f.nombres} ${f.apellidos}, la foto y todos los documentos. No se puede deshacer. Si solo deja de trabajar aquí, usa Inactivar.`;
+    setError('hvEliminarError', '');
+    $('dlgHvEliminar').showModal();
+  });
+  $('btnHvEliminarCerrar')?.addEventListener('click', () => $('dlgHvEliminar').close());
+  $('formHvEliminar')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId) return;
+    setError('hvEliminarError', '');
+    $('btnHvEliminarOk').disabled = true;
+    try {
+      const res = await apiFetch(`/api/funcionarios/${hvFolderId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvEliminarError', data.error || 'No se pudo eliminar');
+        return;
+      }
+      $('dlgHvEliminar').close();
+      hvFolderId = null;
+      hvFolderData = null;
+      abrirHv();
+    } catch (_) {
+      setError('hvEliminarError', 'Error de conexión');
+    } finally {
+      $('btnHvEliminarOk').disabled = false;
+    }
+  });
   $('formHvInactivar')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!hvFolderId) return;

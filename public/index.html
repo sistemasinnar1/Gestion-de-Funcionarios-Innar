@@ -184,6 +184,7 @@
           <button type="button" id="btnHvEditar" class="btn-back">Editar datos</button>
           <button type="button" id="btnHvImprimir" class="btn-back">Imprimir ficha</button>
           <button type="button" id="btnHvInactivar" class="btn-back">Inactivar</button>
+          <button type="button" id="btnHvEliminar" class="btn-back btn-danger">Eliminar</button>
         </div>
       </div>
       <div id="hvFolderError" class="login-error hidden"></div>
@@ -298,6 +299,16 @@
       <div id="hvPdfError" class="login-error hidden"></div>
       <button type="submit" id="btnHvPdfGuardar" class="btn-login">Subir</button>
       <button type="button" id="btnHvPdfCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvEliminar" class="hv-dialog">
+    <form id="formHvEliminar" class="login-form">
+      <h3>Eliminar colaborador</h3>
+      <p id="hvEliminarTexto" class="panel-lead">Se borra la ficha, la foto y todos los documentos. Esto no se puede deshacer. Si solo deja de trabajar aquí, usa Inactivar.</p>
+      <div id="hvEliminarError" class="login-error hidden"></div>
+      <button type="submit" id="btnHvEliminarOk" class="btn-login btn-login-danger">Eliminar definitivamente</button>
+      <button type="button" id="btnHvEliminarCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
 

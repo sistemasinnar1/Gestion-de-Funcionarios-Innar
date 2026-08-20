@@ -272,7 +272,7 @@ router.patch('/funcionarios/:id', requireAuth, async (req, res) => {
        SET nombres = ?, apellidos = ?, documento = ?, cargo = ?, area = ?,
            telefono = ?, correo = ?, fecha_nacimiento = COALESCE(?, fecha_nacimiento),
            tipo_persona = ?, forma_vinculacion = ?
-       WHERE id = ? AND activo = 1`,
+       WHERE id = ?`,
       [
         campos.nombres,
         campos.apellidos,
@@ -308,6 +308,28 @@ router.patch('/funcionarios/:id/estado', requireAuth, async (req, res) => {
     );
     if (!result.affectedRows) return res.status(404).json({ error: 'Colaborador no encontrado' });
     res.json({ ok: true, id, activo });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.delete('/funcionarios/:id', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Colaborador inválido' });
+  try {
+    const row = await db.queryOne(
+      'SELECT id, foto_path FROM funcionarios WHERE id = ?',
+      [id]
+    );
+    if (!row) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    const docs = await db.query(
+      'SELECT archivo_path FROM documentos WHERE funcionario_id = ?',
+      [id]
+    );
+    docs.forEach((d) => storage.borrarArchivo(d.archivo_path));
+    if (row.foto_path) storage.borrarArchivo(row.foto_path);
+    await db.execute('DELETE FROM funcionarios WHERE id = ?', [id]);
+    res.json({ ok: true, id });
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }
