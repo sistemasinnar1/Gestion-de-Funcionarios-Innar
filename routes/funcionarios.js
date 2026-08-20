@@ -4,6 +4,7 @@ const fs = require('fs');
 const multer = require('multer');
 const router = express.Router();
 const db = require('../utils/db-mysql');
+const storage = require('../utils/storage');
 const { requireAuth, safeError } = require('../middleware');
 const {
   TIPOS_PERSONA,
@@ -20,15 +21,16 @@ const {
   fechaIso
 } = require('../utils/documentos-catalogo');
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'documentos');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+storage.ensureDirs();
 
 const ALLOWED_EXT = /\.(pdf|jpe?g|png)$/i;
 const ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const FOTO_EXT = /\.(jpe?g|png|webp)$/i;
+const FOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    destination: (_req, _file, cb) => cb(null, storage.documentosDir()),
     filename: (_req, file, cb) => {
       const safe = String(file.originalname || 'documento').replace(/[^\w.\-áéíóúñÁÉÍÓÚÑ ]+/g, '_');
       cb(null, `${Date.now()}-${safe.slice(-80)}`);
@@ -42,6 +44,22 @@ const upload = multer({
   }
 });
 
+const uploadFoto = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, storage.fotosDir()),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = FOTO_MIME.has(file.mimetype) || FOTO_EXT.test(file.originalname || '');
+    if (!ok) return cb(new Error('La foto debe ser JPG, PNG o WEBP'));
+    cb(null, true);
+  }
+});
+
 function clean(value, max) {
   return String(value || '').trim().slice(0, max);
 }
@@ -51,12 +69,26 @@ function mimeFor(name) {
   if (n.endsWith('.pdf')) return 'application/pdf';
   if (n.endsWith('.png')) return 'image/png';
   if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg';
+  if (n.endsWith('.webp')) return 'image/webp';
   return 'application/octet-stream';
 }
 
 function parseId(value) {
   const id = parseInt(value, 10);
   return id > 0 ? id : 0;
+}
+
+async function reemplazarPrevios(funcionarioId, tipo, keepId) {
+  const previos = await db.query(
+    'SELECT id, archivo_path FROM documentos WHERE funcionario_id = ? AND tipo = ? AND id <> ?',
+    [funcionarioId, tipo, keepId]
+  );
+  if (!previos.length) return;
+  await db.execute(
+    'DELETE FROM documentos WHERE funcionario_id = ? AND tipo = ? AND id <> ?',
+    [funcionarioId, tipo, keepId]
+  );
+  previos.forEach((row) => storage.borrarArchivo(row.archivo_path));
 }
 
 function camposPersona(body) {
@@ -102,19 +134,25 @@ function camposPersona(body) {
 }
 
 function presentarFuncionario(row) {
+  const tieneFoto = Boolean(row.foto_path);
+  const { foto_path: _omit, ...rest } = row;
   return {
-    ...row,
+    ...rest,
     tipo_label: TIPOS_PERSONA[row.tipo_persona]?.label || row.tipo_persona,
-    forma_label: FORMAS_VINCULACION[row.forma_vinculacion] || row.forma_vinculacion
+    forma_label: FORMAS_VINCULACION[row.forma_vinculacion] || row.forma_vinculacion,
+    tiene_foto: tieneFoto,
+    foto_url: tieneFoto ? `/api/funcionarios/${row.id}/foto` : null
   };
 }
 
 async function documentosDe(id) {
   return db.query(
-    `SELECT id, tipo, archivo_nombre, archivo_path, fecha_documento, fecha_vencimiento, creado_en
-     FROM documentos
-     WHERE funcionario_id = ?
-     ORDER BY id DESC`,
+    `SELECT d.id, d.tipo, d.archivo_nombre, d.archivo_path, d.fecha_documento, d.fecha_vencimiento, d.creado_en,
+            u.nombre AS subido_por_nombre
+     FROM documentos d
+     LEFT JOIN usuarios u ON u.id = d.subido_por
+     WHERE d.funcionario_id = ?
+     ORDER BY d.id DESC`,
     [id]
   );
 }
@@ -150,7 +188,8 @@ router.get('/funcionarios', requireAuth, async (req, res) => {
   const q = clean(req.query.q, 80);
   try {
     const params = [];
-    let where = 'WHERE f.activo = 1';
+    const soloInactivos = String(req.query.activo || '') === '0';
+    let where = soloInactivos ? 'WHERE f.activo = 0' : 'WHERE f.activo = 1';
     if (q) {
       const like = `%${q}%`;
       where += ` AND (f.nombres LIKE ? OR f.apellidos LIKE ? OR f.documento LIKE ? OR f.cargo LIKE ?
@@ -159,7 +198,8 @@ router.get('/funcionarios', requireAuth, async (req, res) => {
     }
     const rows = await db.query(
       `SELECT f.id, f.nombres, f.apellidos, f.documento, f.cargo, f.area,
-              f.telefono, f.correo, f.fecha_nacimiento, f.tipo_persona, f.forma_vinculacion
+              f.telefono, f.correo, f.fecha_nacimiento, f.tipo_persona, f.forma_vinculacion,
+              f.foto_path, f.activo
        FROM funcionarios f
        ${where}
        ORDER BY f.apellidos, f.nombres`,
@@ -239,13 +279,81 @@ router.patch('/funcionarios/:id', requireAuth, async (req, res) => {
   }
 });
 
+router.patch('/funcionarios/:id/estado', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Colaborador inválido' });
+  const activo = Number(req.body?.activo) === 1 ? 1 : 0;
+  try {
+    const result = await db.execute(
+      'UPDATE funcionarios SET activo = ? WHERE id = ?',
+      [activo, id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    res.json({ ok: true, id, activo });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.post('/funcionarios/:id/foto', requireAuth, (req, res) => {
+  uploadFoto.single('foto')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'No se pudo subir la foto' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Adjunta una foto' });
+    const id = parseId(req.params.id);
+    if (!id) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Colaborador inválido' });
+    }
+    try {
+      const row = await db.queryOne(
+        'SELECT id, foto_path FROM funcionarios WHERE id = ? AND activo = 1',
+        [id]
+      );
+      if (!row) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(404).json({ error: 'Colaborador no encontrado' });
+      }
+      const rel = storage.rutaRelativa(req.file.path);
+      storage.copiarAEspejo(rel);
+      await db.execute('UPDATE funcionarios SET foto_path = ? WHERE id = ?', [rel, id]);
+      if (row.foto_path && row.foto_path !== rel) {
+        storage.borrarArchivo(row.foto_path);
+      }
+      res.json({ ok: true, foto_url: `/api/funcionarios/${id}/foto` });
+    } catch (e) {
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+});
+
+router.get('/funcionarios/:id/foto', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  try {
+    const row = await db.queryOne(
+      'SELECT foto_path FROM funcionarios WHERE id = ?',
+      [id]
+    );
+    if (!row?.foto_path) return res.status(404).json({ error: 'Sin foto' });
+    const abs = storage.resolverLectura(row.foto_path);
+    if (!abs) return res.status(404).json({ error: 'La foto ya no está en el servidor' });
+    res.setHeader('Content-Type', mimeFor(row.foto_path));
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    fs.createReadStream(abs).pipe(res);
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 router.get('/funcionarios/:id', requireAuth, async (req, res) => {
   const id = parseId(req.params.id);
   try {
     const funcionario = await db.queryOne(
       `SELECT id, nombres, apellidos, documento, cargo, area, telefono, correo,
-              fecha_nacimiento, tipo_persona, forma_vinculacion
-       FROM funcionarios WHERE id = ? AND activo = 1`,
+              fecha_nacimiento, tipo_persona, forma_vinculacion, foto_path, activo
+       FROM funcionarios WHERE id = ?`,
       [id]
     );
     if (!funcionario) return res.status(404).json({ error: 'Colaborador no encontrado' });
@@ -281,7 +389,7 @@ router.post('/funcionarios/:id/documentos', requireAuth, (req, res) => {
 
     try {
       const funcionario = await db.queryOne(
-        'SELECT id, tipo_persona, fecha_nacimiento FROM funcionarios WHERE id = ? AND activo = 1',
+        'SELECT id, tipo_persona, fecha_nacimiento, activo FROM funcionarios WHERE id = ? AND activo = 1',
         [id]
       );
       if (!funcionario) {
@@ -309,7 +417,8 @@ router.post('/funcionarios/:id/documentos', requireAuth, (req, res) => {
         await db.execute('UPDATE funcionarios SET fecha_nacimiento = ? WHERE id = ?', [nacimiento, id]);
       }
 
-      const rel = path.relative(path.join(__dirname, '..'), req.file.path).replace(/\\/g, '/');
+      const rel = storage.rutaRelativa(req.file.path);
+      storage.copiarAEspejo(rel);
       const result = await db.execute(
         `INSERT INTO documentos
           (funcionario_id, tipo, archivo_nombre, archivo_path, fecha_documento, fecha_vencimiento, subido_por)
@@ -324,6 +433,9 @@ router.post('/funcionarios/:id/documentos', requireAuth, (req, res) => {
           req.session.usuarioId
         ]
       );
+      if (!def.multiple) {
+        await reemplazarPrevios(id, tipo, result.insertId);
+      }
       res.json({ ok: true, id: result.insertId, fecha_vencimiento: fechas.fecha_vencimiento });
     } catch (e) {
       fs.unlink(req.file.path, () => {});
@@ -343,8 +455,8 @@ router.get('/funcionarios/:id/documentos/:docId', requireAuth, async (req, res) 
       [docId, id]
     );
     if (!row) return res.status(404).json({ error: 'Documento no encontrado' });
-    const abs = path.join(__dirname, '..', row.archivo_path);
-    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'El archivo ya no está en el servidor' });
+    const abs = storage.resolverLectura(row.archivo_path);
+    if (!abs) return res.status(404).json({ error: 'El archivo ya no está en el servidor' });
     res.setHeader('Content-Type', mimeFor(row.archivo_nombre));
     res.setHeader('Content-Disposition', `inline; filename="${row.archivo_nombre.replace(/"/g, '')}"`);
     fs.createReadStream(abs).pipe(res);

@@ -84,8 +84,9 @@
     <main class="home-content">
       <div class="home-intro">
         <h2>¿Qué necesitas hoy?</h2>
-        <p>Elige un módulo.</p>
+        <p>Revisa alertas y entra al banco de hojas de vida.</p>
       </div>
+      <div id="homeAlertas" class="hv-alertas" hidden></div>
       <div class="module-grid">
         <button type="button" class="module-card module-card-btn" id="btnModuloHv" data-module="hv">
           <span class="module-icon" aria-hidden="true">BH</span>
@@ -118,6 +119,7 @@
       </div>
     </header>
     <main class="home-content hv-content">
+      <div id="hvAlertas" class="hv-alertas" hidden></div>
       <div class="hv-toolbar">
         <input id="hvBuscar" type="search" placeholder="Buscar por nombre, documento, cargo o correo" />
         <button type="button" id="btnHvNuevo" class="btn-action">
@@ -125,9 +127,31 @@
           Nuevo colaborador
         </button>
       </div>
+      <div class="hv-filters">
+        <select id="hvFiltroTipo">
+          <option value="">Todos los tipos</option>
+          <option value="asistencial">Asistencial</option>
+          <option value="administrativo">Administrativo</option>
+        </select>
+        <select id="hvFiltroVinculacion">
+          <option value="">Toda vinculación</option>
+          <option value="contrato_trabajo">Contrato de trabajo</option>
+          <option value="prestacion_servicios">Prestación de servicios</option>
+          <option value="cooperativa">Cooperativa</option>
+        </select>
+        <select id="hvFiltroEstado">
+          <option value="">Todos los estados</option>
+          <option value="incompletos">Incompletos</option>
+          <option value="vencidos">Vencidos (renovar)</option>
+          <option value="por_vencer">Por vencer</option>
+          <option value="cumpleanos">Cumpleaños del mes</option>
+          <option value="al_dia">Al día</option>
+          <option value="inactivos">Inactivos</option>
+        </select>
+      </div>
       <div id="hvError" class="login-error hidden"></div>
       <div id="hvGrid" class="hv-folders"></div>
-      <p id="hvVacio" class="hv-empty hidden">Aún no hay carpetas. Crea el primer colaborador.</p>
+      <p id="hvVacio" class="hv-empty hidden">Aún no hay fichas. Crea el primer colaborador.</p>
     </main>
   </div>
 
@@ -154,8 +178,13 @@
     </header>
     <main class="home-content hv-content">
       <div class="hv-folder-head">
+        <button type="button" id="hvFichaFoto" class="hv-ficha-photo" hidden></button>
         <div id="hvFicha" class="hv-ficha"></div>
-        <button type="button" id="btnHvEditar" class="btn-back">Editar datos</button>
+        <div class="hv-folder-actions">
+          <button type="button" id="btnHvEditar" class="btn-back">Editar datos</button>
+          <button type="button" id="btnHvImprimir" class="btn-back">Imprimir ficha</button>
+          <button type="button" id="btnHvInactivar" class="btn-back">Inactivar</button>
+        </div>
       </div>
       <div id="hvFolderError" class="login-error hidden"></div>
       <div class="hv-slots-bar">
@@ -250,6 +279,7 @@
       <div class="form-group">
         <label for="hvPdfArchivo">Archivo (PDF, JPG o PNG)</label>
         <input id="hvPdfArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required />
+        <p class="field-hint">También puedes arrastrar el archivo al slot. En cédula, póliza o un curso de 2 años, Reemplazar deja solo el archivo nuevo.</p>
       </div>
       <div id="hvPdfExtraNac" class="form-group hidden">
         <label for="hvPdfNacimiento">Fecha de nacimiento</label>
@@ -270,6 +300,20 @@
       <button type="button" id="btnHvPdfCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
+
+  <dialog id="dlgHvInactivar" class="hv-dialog">
+    <form id="formHvInactivar" class="login-form">
+      <h3 id="hvInactivarTitulo">Inactivar colaborador</h3>
+      <p id="hvInactivarTexto" class="panel-lead"></p>
+      <div id="hvInactivarError" class="login-error hidden"></div>
+      <button type="submit" id="btnHvInactivarOk" class="btn-login">Inactivar</button>
+      <button type="button" id="btnHvInactivarCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <div id="hvPrintSheet" class="hv-print-sheet" hidden></div>
+
+  <input id="hvFotoArchivo" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
 
   <script src="/js/app.js" defer></script>
 </body>

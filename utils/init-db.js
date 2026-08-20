@@ -2,6 +2,8 @@ require('dotenv').config();
 const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { DOC_TYPES } = require('./documentos-catalogo');
+const storage = require('./storage');
 
 const DEFAULT_ADMIN_USER = 'superadmin';
 
@@ -104,6 +106,7 @@ async function initializeDatabase() {
       fecha_nacimiento DATE NULL,
       tipo_persona ENUM('asistencial', 'administrativo') NOT NULL DEFAULT 'administrativo',
       forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL,
+      foto_path VARCHAR(500) NULL,
       activo TINYINT(1) NOT NULL DEFAULT 1,
       creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_documento (documento),
@@ -119,7 +122,8 @@ async function initializeDatabase() {
     ['correo', 'correo VARCHAR(190) NULL AFTER telefono'],
     ['fecha_nacimiento', 'fecha_nacimiento DATE NULL AFTER correo'],
     ['tipo_persona', "tipo_persona ENUM('asistencial', 'administrativo') NOT NULL DEFAULT 'administrativo' AFTER fecha_nacimiento"],
-    ['forma_vinculacion', "forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL AFTER tipo_persona"]
+    ['forma_vinculacion', "forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL AFTER tipo_persona"],
+    ['foto_path', 'foto_path VARCHAR(500) NULL AFTER forma_vinculacion']
   ];
   for (const [name, ddl] of funcionarioCols) {
     if (!(await columnExists(conn, dbName, 'funcionarios', name))) {
@@ -170,6 +174,37 @@ async function initializeDatabase() {
         AND d.archivo_path = hv.archivo_path
     )
   `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS jobs_estado (
+      clave VARCHAR(64) PRIMARY KEY,
+      valor VARCHAR(190) NULL,
+      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  const multipleTipos = DOC_TYPES.filter((d) => d.multiple).map((d) => d.id);
+  const ph = multipleTipos.map(() => '?').join(',') || "''";
+  const [sobrantes] = await conn.query(
+    `SELECT d.id, d.archivo_path
+     FROM documentos d
+     INNER JOIN (
+       SELECT funcionario_id, tipo, MAX(id) AS keep_id
+       FROM documentos
+       WHERE tipo NOT IN (${ph})
+       GROUP BY funcionario_id, tipo
+       HAVING COUNT(*) > 1
+     ) x ON d.funcionario_id = x.funcionario_id AND d.tipo = x.tipo
+     WHERE d.id <> x.keep_id`,
+    multipleTipos
+  );
+  if (sobrantes.length) {
+    const ids = sobrantes.map((row) => row.id);
+    const idPh = ids.map(() => '?').join(',');
+    await conn.query(`DELETE FROM documentos WHERE id IN (${idPh})`, ids);
+    sobrantes.forEach((row) => storage.borrarArchivo(row.archivo_path));
+    console.log(`✓ ${sobrantes.length} archivo(s) reemplazado(s) antiguos se eliminaron`);
+  }
 
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@innar.local').trim().toLowerCase();
   const [rows] = await conn.query('SELECT COUNT(*) AS total FROM usuarios');

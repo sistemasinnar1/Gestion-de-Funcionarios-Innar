@@ -126,7 +126,8 @@ function mapArchivo(row) {
     nombre: row.archivo_nombre,
     fecha_documento: row.fecha_documento || null,
     fecha_vencimiento: row.fecha_vencimiento || null,
-    creado_en: row.creado_en
+    creado_en: row.creado_en,
+    subido_por: row.subido_por_nombre || null
   };
 }
 
@@ -217,5 +218,7 @@ module.exports = {
   progresoDe,
   alertaDe,
   fechasParaAlta,
-  fechaIso
+  fechaIso,
+  daysUntil,
+  ALERTA_DIAS
 };

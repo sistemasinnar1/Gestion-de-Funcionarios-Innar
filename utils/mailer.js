@@ -153,4 +153,32 @@ async function sendAccessCode({ to, nombre, codigo, minutos }) {
   }
 }
 
-module.exports = { isConfigured, sendAccessCode, verifySmtp };
+async function sendMail({ to, subject, text, html }) {
+  if (!isConfigured()) {
+    return { sent: false, reason: 'smtp_no_configurado', error: 'SMTP no configurado' };
+  }
+  const from = smtpFrom();
+  try {
+    await getTransport().sendMail({
+      from: `"Innar Gestión" <${from}>`,
+      to,
+      subject,
+      text,
+      html
+    });
+    return { sent: true };
+  } catch (err) {
+    logger.error('[MAIL] No se pudo enviar el correo', {
+      message: err.message,
+      code: err.code,
+      subject
+    });
+    return {
+      sent: false,
+      reason: 'smtp_error',
+      error: String(err.message || err).slice(0, 220)
+    };
+  }
+}
+
+module.exports = { isConfigured, sendAccessCode, sendMail, verifySmtp };

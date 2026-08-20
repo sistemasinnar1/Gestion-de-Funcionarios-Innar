@@ -27,6 +27,8 @@ const { applySecurity } = require('./config/security');
 const { applyRateLimiters } = require('./config/rate-limit');
 const authRoutes = require('./routes/auth');
 const funcionariosRoutes = require('./routes/funcionarios');
+const { iniciarAlertasCorreo } = require('./utils/alertas-correo');
+const { iniciarRespaldo } = require('./utils/respaldo');
 
 const PACKAGE_VERSION = require('./package.json').version;
 const APP_VERSION = process.env.APP_BUILD_VERSION || PACKAGE_VERSION;
@@ -120,6 +122,8 @@ async function start() {
   const app = createApp();
   app.listen(PORT, () => {
     logger.info(`Innar Gestión v${APP_VERSION} en http://localhost:${PORT}`);
+    iniciarAlertasCorreo();
+    iniciarRespaldo();
   });
 }
 

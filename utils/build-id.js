@@ -11,7 +11,11 @@ const WATCHED = [
   'public/js/app.js',
   'routes/funcionarios.js',
   'routes/auth.js',
-  'utils/documentos-catalogo.js'
+  'utils/documentos-catalogo.js',
+  'utils/alertas-correo.js',
+  'utils/mailer.js',
+  'utils/storage.js',
+  'utils/respaldo.js'
 ];
 
 function getBuildId() {

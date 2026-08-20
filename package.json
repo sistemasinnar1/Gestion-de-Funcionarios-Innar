@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "migrate": "node utils/init-db.js"
+    "migrate": "node utils/init-db.js",
+    "respaldo": "node scripts/respaldo.js"
   },
   "author": "",
   "license": "UNLICENSED",
