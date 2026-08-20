@@ -99,14 +99,33 @@ async function initializeDatabase() {
       documento VARCHAR(30) NOT NULL,
       cargo VARCHAR(120) NULL,
       area VARCHAR(120) NULL,
+      telefono VARCHAR(30) NULL,
+      correo VARCHAR(190) NULL,
+      fecha_nacimiento DATE NULL,
+      tipo_persona ENUM('asistencial', 'administrativo') NOT NULL DEFAULT 'administrativo',
+      forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL,
       activo TINYINT(1) NOT NULL DEFAULT 1,
       creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_documento (documento),
       INDEX idx_nombre (nombres, apellidos),
       INDEX idx_cargo (cargo),
-      INDEX idx_area (area)
+      INDEX idx_area (area),
+      INDEX idx_tipo_persona (tipo_persona)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  const funcionarioCols = [
+    ['telefono', 'telefono VARCHAR(30) NULL AFTER area'],
+    ['correo', 'correo VARCHAR(190) NULL AFTER telefono'],
+    ['fecha_nacimiento', 'fecha_nacimiento DATE NULL AFTER correo'],
+    ['tipo_persona', "tipo_persona ENUM('asistencial', 'administrativo') NOT NULL DEFAULT 'administrativo' AFTER fecha_nacimiento"],
+    ['forma_vinculacion', "forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL AFTER tipo_persona"]
+  ];
+  for (const [name, ddl] of funcionarioCols) {
+    if (!(await columnExists(conn, dbName, 'funcionarios', name))) {
+      await conn.query(`ALTER TABLE funcionarios ADD COLUMN ${ddl}`);
+    }
+  }
 
   await conn.query(`
     CREATE TABLE IF NOT EXISTS hojas_vida (
@@ -121,6 +140,35 @@ async function initializeDatabase() {
       CONSTRAINT fk_hv_funcionario
         FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS documentos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      tipo VARCHAR(64) NOT NULL,
+      archivo_nombre VARCHAR(255) NOT NULL,
+      archivo_path VARCHAR(500) NOT NULL,
+      fecha_documento DATE NULL,
+      fecha_vencimiento DATE NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_func_tipo (funcionario_id, tipo),
+      CONSTRAINT fk_doc_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    INSERT INTO documentos (funcionario_id, tipo, archivo_nombre, archivo_path, subido_por, creado_en)
+    SELECT hv.funcionario_id, 'hoja_vida', hv.archivo_nombre, hv.archivo_path, hv.subido_por, hv.creado_en
+    FROM hojas_vida hv
+    WHERE NOT EXISTS (
+      SELECT 1 FROM documentos d
+      WHERE d.funcionario_id = hv.funcionario_id
+        AND d.tipo = 'hoja_vida'
+        AND d.archivo_path = hv.archivo_path
+    )
   `);
 
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@innar.local').trim().toLowerCase();

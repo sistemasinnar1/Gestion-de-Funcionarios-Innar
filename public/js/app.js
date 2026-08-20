@@ -189,14 +189,108 @@ function formatFecha(value) {
   return day && m && y ? `${day}/${m}/${y}` : d;
 }
 
-let hvPdfId = null;
 let hvFolderId = null;
+let hvEditId = null;
+let hvUploadTipo = null;
+let hvFolderData = null;
 let hvBuscarTimer = null;
+
+const ESTADO_LABEL = {
+  falta: 'Falta',
+  cargado: 'Cargado',
+  por_vencer: 'Por vencer',
+  vencido: 'Vencido'
+};
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 function iniciales(nombres, apellidos) {
   const a = String(nombres || '').trim().charAt(0);
   const b = String(apellidos || '').trim().charAt(0);
   return `${a}${b}`.toUpperCase() || 'F';
+}
+
+function formatCumple(iso) {
+  const d = String(iso || '').slice(0, 10);
+  const [, m, day] = d.split('-');
+  if (!m || !day) return '';
+  return `${Number(day)} de ${MESES[Number(m) - 1] || m}`;
+}
+
+function payloadPersona() {
+  const tipoSelect = $('hvTipoPersonaSelect');
+  const tipo = ($('hvTipoPersona').value || tipoSelect?.value || '').trim();
+  return {
+    nombres: $('hvNombres').value.trim(),
+    apellidos: $('hvApellidos').value.trim(),
+    documento: $('hvDocumento').value.trim(),
+    telefono: $('hvTelefono').value.trim(),
+    correo: $('hvCorreo').value.trim(),
+    forma_vinculacion: $('hvVinculacion').value,
+    cargo: $('hvCargo').value.trim(),
+    area: $('hvArea').value.trim(),
+    tipo_persona: tipo,
+    fecha_nacimiento: hvEditId ? (hvFolderData?.funcionario?.fecha_nacimiento || null) : null
+  };
+}
+
+function mostrarPasoTipo() {
+  $('hvNuevoPasoTipo').classList.remove('hidden');
+  $('hvNuevoPasoDatos').classList.add('hidden');
+}
+
+function mostrarPasoDatos(tipo, editando) {
+  $('hvNuevoPasoTipo').classList.add('hidden');
+  $('hvNuevoPasoDatos').classList.remove('hidden');
+  $('hvTipoPersona').value = tipo;
+  if ($('hvTipoPersonaSelect')) $('hvTipoPersonaSelect').value = tipo;
+  $('hvTipoEditWrap').classList.toggle('hidden', !editando);
+  $('hvNuevoTitulo').textContent = editando ? 'Editar datos' : 'Nuevo colaborador';
+  $('hvNuevoTipoLabel').textContent = tipo === 'asistencial'
+    ? 'Asistencial — contacto con el paciente'
+    : 'Administrativo — sin contacto con el paciente';
+  $('btnHvNuevoAtras').classList.toggle('hidden', Boolean(editando));
+}
+
+function resetDialogoNuevo() {
+  hvEditId = null;
+  $('formHvNuevo').reset();
+  $('hvTipoPersona').value = '';
+  setError('hvNuevoError', '');
+  mostrarPasoTipo();
+}
+
+function llenarFormulario(f) {
+  $('hvNombres').value = f.nombres || '';
+  $('hvApellidos').value = f.apellidos || '';
+  $('hvDocumento').value = f.documento || '';
+  $('hvTelefono').value = f.telefono || '';
+  $('hvCorreo').value = f.correo || '';
+  $('hvVinculacion').value = f.forma_vinculacion || '';
+  $('hvCargo').value = f.cargo || '';
+  $('hvArea').value = f.area || '';
+  $('hvTipoPersona').value = f.tipo_persona || '';
+  if ($('hvTipoPersonaSelect')) $('hvTipoPersonaSelect').value = f.tipo_persona || 'administrativo';
+}
+
+const HV_GRUPOS = [
+  { label: 'Identificación', tipos: ['hoja_vida', 'cedula'] },
+  { label: 'Formación', tipos: ['titulo_bachiller', 'acta_bachiller', 'titulo_profesional', 'acta_profesional', 'rethus'] },
+  { label: 'Cursos y experiencia', tipos: ['cursos_generales', 'constancias_trabajo'] },
+  { label: 'Afiliaciones y salud', tipos: ['examen_medico', 'afiliacion_salud', 'afiliacion_pension', 'afiliacion_arl'] },
+  { label: 'Cursos de 2 años', tipos: ['curso_violencia_sexual', 'curso_soporte_vital', 'curso_duelo', 'curso_telemedicina'] },
+  { label: 'Contratación', tipos: ['poliza_rc', 'rut'] }
+];
+
+const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M14 3v6h6"/></svg>';
+const ICON_PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>';
+const ICON_ALERT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M14 3v5h5M12 11v3M12 17h.01"/></svg>';
+const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12l5 5L20 7"/></svg>';
+
+function faltantesDe(progreso) {
+  if (!progreso) return 0;
+  if (Number.isFinite(progreso.faltantes)) return Number(progreso.faltantes);
+  return Math.max(0, Number(progreso.requeridos || 0) - Number(progreso.cargados || 0));
 }
 
 async function cargarFuncionarios() {
@@ -219,17 +313,26 @@ async function cargarFuncionarios() {
     }
     vacio.classList.add('hidden');
     data.forEach((row) => {
-      const n = Number(row.hv_count || 0);
+      const p = row.progreso || { cargados: 0, requeridos: 0 };
+      const faltan = faltantesDe(p);
+      const alerta = row.alerta;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'hv-folder';
       btn.dataset.id = row.id;
+      const badge = faltan > 0
+        ? `<span class="hv-folder-badge" title="Faltan ${faltan} archivo${faltan === 1 ? '' : 's'}">${ICON_ALERT}<b>${faltan}</b></span>`
+        : `<span class="hv-folder-badge is-ok" title="Requisitos al día">${ICON_CHECK}</span>`;
+      const avance = faltan > 0
+        ? `Faltan ${faltan} archivo${faltan === 1 ? '' : 's'}`
+        : `${p.cargados}/${p.requeridos} al día`;
       btn.innerHTML = `
         <span class="hv-folder-body">
+          ${badge}
           <span class="hv-folder-initials">${escapeHtml(iniciales(row.nombres, row.apellidos))}</span>
           <span class="hv-folder-name">${escapeHtml(row.nombres)} ${escapeHtml(row.apellidos)}</span>
-          <span class="hv-folder-role">${escapeHtml(row.cargo || row.area || 'Sin cargo')}</span>
-          <span class="hv-folder-count">${n} documento${n === 1 ? '' : 's'}</span>
+          <span class="hv-folder-role">${escapeHtml(row.tipo_label || '')} · ${escapeHtml(row.forma_label || 'Sin vinculación')}</span>
+          <span class="hv-folder-count${alerta || faltan ? ' is-alert' : ''}">${escapeHtml(avance)}</span>
         </span>`;
       grid.appendChild(btn);
     });
@@ -238,9 +341,98 @@ async function cargarFuncionarios() {
   }
 }
 
+function renderFicha(f, progreso) {
+  const faltan = faltantesDe(progreso);
+  const items = [
+    ['Documento', f.documento],
+    ['Tipo', f.tipo_label],
+    ['Vinculación', f.forma_label],
+    ['Teléfono', f.telefono],
+    ['Correo', f.correo],
+    ['Cargo', f.cargo],
+    ['Área', f.area],
+    ['Cumpleaños', f.fecha_nacimiento ? formatCumple(f.fecha_nacimiento) : 'Pendiente (al cargar la cédula)'],
+    ['Archivos', faltan > 0 ? `Faltan ${faltan}` : `${progreso?.cargados || 0}/${progreso?.requeridos || 0} listos`]
+  ];
+  $('hvFicha').innerHTML = items.map(([k, v]) => `
+    <div>
+      <dt>${escapeHtml(k)}</dt>
+      <dd>${escapeHtml(v || '—')}</dd>
+    </div>`).join('');
+}
+
+function textoSlot(req) {
+  if (req.estado === 'falta') {
+    return req.required ? 'Pendiente por subir' : 'Opcional · aún sin archivo';
+  }
+  const latest = req.archivos[0];
+  if (!latest) return 'Pendiente por subir';
+  const bits = [latest.nombre];
+  if (latest.fecha_documento) bits.push(`curso ${formatFecha(latest.fecha_documento)}`);
+  if (latest.fecha_vencimiento) bits.push(`vence ${formatFecha(latest.fecha_vencimiento)}`);
+  return bits.join(' · ');
+}
+
+function renderSlot(req) {
+  const badge = !req.required && req.estado === 'falta'
+    ? '<span class="hv-badge hv-badge-opcional">Opcional</span>'
+    : `<span class="hv-badge hv-badge-${req.estado}">${ESTADO_LABEL[req.estado] || req.estado}</span>`;
+  const latest = req.archivos[0];
+  const files = req.archivos.length > 1
+    ? `<div class="hv-slot-files">${req.archivos.map((a) => `
+        <div class="hv-slot-file">
+          <span>${escapeHtml(a.nombre)}</span>
+          <button type="button" data-doc="${a.id}">Ver</button>
+        </div>`).join('')}</div>`
+    : '';
+  return `
+    <article class="hv-slot is-${req.estado}">
+      <div class="hv-slot-icon">${req.estado === 'falta' ? ICON_PLUS : ICON_FILE}</div>
+      <div class="hv-slot-top">
+        <h5>${escapeHtml(req.label)}</h5>
+        ${badge}
+      </div>
+      <p>${escapeHtml(textoSlot(req))}</p>
+      ${files}
+      <div class="hv-slot-actions">
+        ${latest && req.archivos.length === 1 ? `<button type="button" data-doc="${latest.id}">Ver</button>` : ''}
+        <button type="button" class="hv-slot-upload" data-subir="${escapeHtml(req.tipo)}">${req.estado === 'falta' ? 'Subir archivo' : (req.multiple ? 'Agregar' : 'Reemplazar')}</button>
+      </div>
+    </article>`;
+}
+
+function renderRequisitos(requisitos, progreso) {
+  const docs = $('hvDocs');
+  docs.innerHTML = '';
+  HV_GRUPOS.forEach((grupo) => {
+    const items = requisitos.filter((req) => grupo.tipos.includes(req.tipo));
+    if (!items.length) return;
+    const wrap = document.createElement('section');
+    wrap.className = 'hv-slot-group';
+    wrap.innerHTML = `<h4>${escapeHtml(grupo.label)}</h4><div class="hv-slot-grid">${items.map(renderSlot).join('')}</div>`;
+    docs.appendChild(wrap);
+  });
+
+  const chip = $('hvMissingChip');
+  const sub = $('hvSlotsSub');
+  const faltan = faltantesDe(progreso);
+  if (chip) {
+    chip.hidden = false;
+    if (faltan > 0) {
+      chip.className = 'hv-missing-chip';
+      chip.innerHTML = `${ICON_ALERT}<span>Faltan ${faltan} archivo${faltan === 1 ? '' : 's'}</span>`;
+    } else {
+      chip.className = 'hv-missing-chip is-ok';
+      chip.innerHTML = `${ICON_CHECK}<span>Todos los exigibles están cargados</span>`;
+    }
+  }
+  if (sub) {
+    sub.textContent = 'Cada documento tiene su espacio, esté o no cargado.';
+  }
+}
+
 async function abrirCarpeta(id) {
   hvFolderId = id;
-  hvPdfId = id;
   setError('hvFolderError', '');
   try {
     const res = await apiFetch(`/api/funcionarios/${id}`);
@@ -249,31 +441,12 @@ async function abrirCarpeta(id) {
       setError('hvError', data.error || 'No se pudo abrir la carpeta');
       return;
     }
+    hvFolderData = data;
     const f = data.funcionario;
-    const nombre = `${f.nombres} ${f.apellidos}`;
-    $('hvFolderTitulo').textContent = nombre;
-    $('hvFolderSub').textContent = f.cargo || 'Hojas de vida';
-    $('hvFolderMeta').textContent = [f.documento, f.cargo, f.area].filter(Boolean).join(' · ');
-    const docs = $('hvDocs');
-    const vacio = $('hvDocsVacio');
-    docs.innerHTML = '';
-    if (!data.documentos.length) {
-      vacio.classList.remove('hidden');
-    } else {
-      vacio.classList.add('hidden');
-      data.documentos.forEach((doc) => {
-        const el = document.createElement('article');
-        el.className = 'hv-doc';
-        el.innerHTML = `
-          <div class="hv-doc-icon">PDF</div>
-          <div class="hv-doc-info">
-            <strong>${escapeHtml(doc.tipo)} v${doc.version}</strong>
-            <span>${escapeHtml(doc.nombre)} · ${formatFecha(doc.fecha)}</span>
-          </div>
-          <button type="button" data-doc="${doc.id}">Abrir</button>`;
-        docs.appendChild(el);
-      });
-    }
+    $('hvFolderTitulo').textContent = `${f.nombres} ${f.apellidos}`;
+    $('hvFolderSub').textContent = f.tipo_label || 'Banco de hojas de vida';
+    renderFicha(f, data.progreso);
+    renderRequisitos(data.requisitos || [], data.progreso);
     showView('view-hv-folder');
     if (location.hash !== `#hv/${id}`) {
       history.pushState({ view: 'hv-folder', id }, '', `#hv/${id}`);
@@ -306,6 +479,26 @@ function aplicarRutaAutenticado() {
   showView('view-home');
 }
 
+function abrirDialogoSubida(tipo) {
+  const req = (hvFolderData?.requisitos || []).find((r) => r.tipo === tipo);
+  if (!req || !hvFolderId) return;
+  hvUploadTipo = tipo;
+  $('hvPdfTitulo').textContent = req.label;
+  $('hvPdfNombre').textContent = req.multiple ? 'Puedes cargar varios archivos en este requisito.' : 'Si ya hay un archivo, este queda como la versión actual.';
+  $('hvPdfArchivo').value = '';
+  $('hvPdfNacimiento').value = hvFolderData.funcionario.fecha_nacimiento || '';
+  $('hvPdfFechaDoc').value = '';
+  $('hvPdfVence').value = '';
+  $('hvPdfExtraNac').classList.toggle('hidden', !req.pideFechaNacimiento);
+  $('hvPdfExtraCurso').classList.toggle('hidden', req.pideFecha !== 'documento');
+  $('hvPdfExtraPoliza').classList.toggle('hidden', req.pideFecha !== 'vencimiento');
+  $('hvPdfNacimiento').required = Boolean(req.pideFechaNacimiento) && !hvFolderData.funcionario.fecha_nacimiento;
+  $('hvPdfFechaDoc').required = req.pideFecha === 'documento';
+  $('hvPdfVence').required = req.pideFecha === 'vencimiento';
+  setError('hvPdfError', '');
+  $('dlgHvPdf').showModal();
+}
+
 function setupHojasVida() {
   $('btnModuloHv')?.addEventListener('click', abrirHv);
   $('btnHvVolver')?.addEventListener('click', () => {
@@ -324,67 +517,67 @@ function setupHojasVida() {
   });
 
   $('hvDocs')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-doc]');
-    if (!btn || !hvFolderId) return;
-    window.open(`/api/funcionarios/${hvFolderId}/hoja-vida/${btn.getAttribute('data-doc')}`, '_blank');
+    const ver = e.target.closest('[data-doc]');
+    const subir = e.target.closest('[data-subir]');
+    if (ver && hvFolderId) {
+      window.open(`/api/funcionarios/${hvFolderId}/documentos/${ver.getAttribute('data-doc')}`, '_blank');
+    }
+    if (subir) abrirDialogoSubida(subir.getAttribute('data-subir'));
   });
 
-  $('btnHvSubir')?.addEventListener('click', () => {
-    if (!hvFolderId) return;
-    hvPdfId = hvFolderId;
-    $('hvPdfNombre').textContent = `PDF para ${$('hvFolderTitulo').textContent}`;
-    $('hvPdfArchivo').value = '';
-    setError('hvPdfError', '');
-    $('dlgHvPdf').showModal();
+  $('btnHvEditar')?.addEventListener('click', () => {
+    if (!hvFolderData?.funcionario) return;
+    hvEditId = hvFolderData.funcionario.id;
+    setError('hvNuevoError', '');
+    llenarFormulario(hvFolderData.funcionario);
+    mostrarPasoDatos(hvFolderData.funcionario.tipo_persona, true);
+    $('dlgHvNuevo').showModal();
   });
 
   $('btnHvNuevo')?.addEventListener('click', () => {
-    $('formHvNuevo').reset();
-    setError('hvNuevoError', '');
+    resetDialogoNuevo();
     $('dlgHvNuevo').showModal();
   });
   $('btnHvNuevoCerrar')?.addEventListener('click', () => $('dlgHvNuevo').close());
+  $('btnHvNuevoCerrarTipo')?.addEventListener('click', () => $('dlgHvNuevo').close());
+  $('btnHvNuevoAtras')?.addEventListener('click', mostrarPasoTipo);
   $('btnHvPdfCerrar')?.addEventListener('click', () => $('dlgHvPdf').close());
+
+  $('hvTipoPersonaSelect')?.addEventListener('change', (e) => {
+    $('hvTipoPersona').value = e.target.value;
+    mostrarPasoDatos(e.target.value, Boolean(hvEditId));
+  });
+
+  document.querySelectorAll('.hv-tipo-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      mostrarPasoDatos(btn.getAttribute('data-tipo'), false);
+      $('hvNombres').focus();
+    });
+  });
 
   $('formHvNuevo')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     setError('hvNuevoError', '');
     $('btnHvGuardar').disabled = true;
+    const body = payloadPersona();
+    if (hvEditId && hvFolderData?.funcionario?.fecha_nacimiento) {
+      body.fecha_nacimiento = hvFolderData.funcionario.fecha_nacimiento;
+    }
     try {
-      const res = await apiFetch('/api/funcionarios', {
-        method: 'POST',
-        body: JSON.stringify({
-          nombres: $('hvNombres').value.trim(),
-          apellidos: $('hvApellidos').value.trim(),
-          documento: $('hvDocumento').value.trim(),
-          cargo: $('hvCargo').value.trim(),
-          area: $('hvArea').value.trim()
-        })
+      const url = hvEditId ? `/api/funcionarios/${hvEditId}` : '/api/funcionarios';
+      const res = await apiFetch(url, {
+        method: hvEditId ? 'PATCH' : 'POST',
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok) {
         setError('hvNuevoError', data.error || 'No se pudo guardar');
         return;
       }
-      const pdf = $('hvPdfNuevo').files[0];
-      if (pdf && data.id) {
-        const fd = new FormData();
-        fd.append('archivo', pdf);
-        const up = await fetch(`/api/funcionarios/${data.id}/hoja-vida`, {
-          method: 'POST',
-          headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
-          credentials: 'include',
-          body: fd
-        });
-        if (!up.ok) {
-          const err = await up.json().catch(() => ({}));
-          setError('hvNuevoError', err.error || 'El funcionario se creó, pero el PDF no se subió');
-          await cargarFuncionarios();
-          return;
-        }
-      }
       $('dlgHvNuevo').close();
-      await cargarFuncionarios();
+      const id = hvEditId || data.id;
+      if (id) await abrirCarpeta(id);
+      else await cargarFuncionarios();
     } catch (_) {
       setError('hvNuevoError', 'Error de conexión');
     } finally {
@@ -394,15 +587,19 @@ function setupHojasVida() {
 
   $('formHvPdf')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!hvPdfId) return;
-    const pdf = $('hvPdfArchivo').files[0];
-    if (!pdf) return;
+    if (!hvFolderId || !hvUploadTipo) return;
+    const archivo = $('hvPdfArchivo').files[0];
+    if (!archivo) return;
     setError('hvPdfError', '');
     $('btnHvPdfGuardar').disabled = true;
     try {
       const fd = new FormData();
-      fd.append('archivo', pdf);
-      const res = await fetch(`/api/funcionarios/${hvPdfId}/hoja-vida`, {
+      fd.append('archivo', archivo);
+      fd.append('tipo', hvUploadTipo);
+      if ($('hvPdfNacimiento').value) fd.append('fecha_nacimiento', $('hvPdfNacimiento').value);
+      if ($('hvPdfFechaDoc').value) fd.append('fecha_documento', $('hvPdfFechaDoc').value);
+      if ($('hvPdfVence').value) fd.append('fecha_vencimiento', $('hvPdfVence').value);
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/documentos`, {
         method: 'POST',
         headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
         credentials: 'include',
@@ -410,11 +607,11 @@ function setupHojasVida() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError('hvPdfError', data.error || 'No se pudo subir el PDF');
+        setError('hvPdfError', data.error || 'No se pudo subir el archivo');
         return;
       }
       $('dlgHvPdf').close();
-      await abrirCarpeta(hvPdfId);
+      await abrirCarpeta(hvFolderId);
     } catch (_) {
       setError('hvPdfError', 'Error de conexión');
     } finally {
