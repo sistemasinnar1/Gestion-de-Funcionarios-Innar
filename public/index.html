@@ -9,9 +9,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <meta name="app-version" content="dev"/>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+  <div id="updateBanner" class="update-banner hidden" role="status">
+    <p>El sistema tiene una actualización.</p>
+    <button type="button" id="btnActualizarApp">Actualizar</button>
+  </div>
   <div id="splashScreen">
     <img src="/images/logo-innar-blanco.png" alt="INNAR" class="splash-logo" width="640" height="180" fetchpriority="high"/>
     <div class="splash-text">Cargando</div>

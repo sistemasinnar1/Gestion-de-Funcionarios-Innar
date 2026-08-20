@@ -649,9 +649,40 @@ function setupForms() {
   });
 }
 
+function setupUpdateCheck() {
+  const loaded = document.querySelector('meta[name="app-version"]')?.getAttribute('content') || '';
+  const banner = $('updateBanner');
+
+  function mostrarAviso() {
+    banner?.classList.remove('hidden');
+  }
+
+  async function comprobar() {
+    if (!loaded || loaded === 'dev') return;
+    try {
+      const res = await fetch('/api/version', { cache: 'no-store', credentials: 'include' });
+      const data = await res.json();
+      if (data.version && data.version !== loaded) mostrarAviso();
+    } catch (_) { /* ignore */ }
+  }
+
+  $('btnActualizarApp')?.addEventListener('click', () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('_r', String(Date.now()));
+    window.location.replace(url.toString());
+  });
+
+  comprobar();
+  setInterval(comprobar, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') comprobar();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   setupForms();
   setupHojasVida();
+  setupUpdateCheck();
   $('btnLogout')?.addEventListener('click', doLogout);
   document.querySelectorAll('.js-logout').forEach((btn) => btn.addEventListener('click', doLogout));
   const autenticado = await checkSession();

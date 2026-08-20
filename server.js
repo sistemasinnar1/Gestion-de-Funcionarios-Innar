@@ -15,10 +15,12 @@ if (process.env.SESSION_SECRET.length < 32) {
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 
 const db = require('./utils/db-mysql');
 const logger = require('./utils/logger');
 const { initializeDatabase } = require('./utils/init-db');
+const { getBuildId } = require('./utils/build-id');
 const { applyCors } = require('./config/cors');
 const { applySession } = require('./config/session');
 const { applySecurity } = require('./config/security');
@@ -29,7 +31,26 @@ const funcionariosRoutes = require('./routes/funcionarios');
 const PACKAGE_VERSION = require('./package.json').version;
 const APP_VERSION = process.env.APP_BUILD_VERSION || PACKAGE_VERSION;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const INDEX_PATH = path.join(PUBLIC_DIR, 'index.html');
 const PORT = parseInt(process.env.PORT, 10) || 3001;
+
+function noStore(res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+}
+
+function sendIndex(_req, res) {
+  noStore(res);
+  const version = process.env.APP_BUILD_VERSION || getBuildId();
+  let html = fs.readFileSync(INDEX_PATH, 'utf8');
+  html = html
+    .replace('content="dev"', `content="${version}"`)
+    .replace('/css/style.css"', `/css/style.css?v=${version}"`)
+    .replace('/js/app.js"', `/js/app.js?v=${version}"`);
+  res.type('html').send(html);
+}
 
 function createApp() {
   const app = express();
@@ -42,11 +63,24 @@ function createApp() {
 
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-  app.use(express.static(PUBLIC_DIR));
+  app.get(['/', '/index.html'], sendIndex);
+  app.use(express.static(PUBLIC_DIR, {
+    index: false,
+    etag: true,
+    setHeaders(res, filePath) {
+      if (/\.(css|js)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    }
+  }));
 
-  app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
+  app.get('/api/version', (_req, res) => {
+    noStore(res);
+    res.json({ version: process.env.APP_BUILD_VERSION || getBuildId() });
+  });
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, version: APP_VERSION, uptime: process.uptime() });
+    noStore(res);
+    res.json({ ok: true, version: process.env.APP_BUILD_VERSION || getBuildId(), uptime: process.uptime() });
   });
   app.get('/api/health/db', async (_req, res) => {
     try {
@@ -69,7 +103,7 @@ function createApp() {
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api/')) return next();
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    sendIndex(req, res);
   });
 
   app.use((err, _req, res, _next) => {
