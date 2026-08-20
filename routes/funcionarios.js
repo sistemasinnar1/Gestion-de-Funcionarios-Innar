@@ -23,6 +23,24 @@ const {
 
 storage.ensureDirs();
 
+router.get('/health/archivos', requireAuth, (_req, res) => {
+  const docs = storage.documentosDir();
+  const fotos = storage.fotosDir();
+  const listar = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n !== '.' && n !== '..').length : 0);
+  res.json({
+    cwd: process.cwd(),
+    app_root: storage.ROOT,
+    uploads: storage.uploadsRoot(),
+    backups: storage.backupsRoot(),
+    upload_dir_env: process.env.UPLOAD_DIR || null,
+    backup_dir_env: process.env.BACKUP_DIR || null,
+    documentos_existe: fs.existsSync(docs),
+    fotos_existe: fs.existsSync(fotos),
+    n_documentos: listar(docs),
+    n_fotos: listar(fotos)
+  });
+});
+
 const ALLOWED_EXT = /\.(pdf|jpe?g|png)$/i;
 const ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const FOTO_EXT = /\.(jpe?g|png|webp)$/i;

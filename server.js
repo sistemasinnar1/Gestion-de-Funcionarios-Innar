@@ -29,6 +29,7 @@ const authRoutes = require('./routes/auth');
 const funcionariosRoutes = require('./routes/funcionarios');
 const { iniciarAlertasCorreo } = require('./utils/alertas-correo');
 const { iniciarRespaldo } = require('./utils/respaldo');
+const storage = require('./utils/storage');
 
 const PACKAGE_VERSION = require('./package.json').version;
 const APP_VERSION = process.env.APP_BUILD_VERSION || PACKAGE_VERSION;
@@ -122,6 +123,12 @@ async function start() {
   const app = createApp();
   app.listen(PORT, () => {
     logger.info(`Innar Gestión v${APP_VERSION} en http://localhost:${PORT}`);
+    logger.info('Archivos y respaldos', {
+      uploads: storage.uploadsRoot(),
+      backups: storage.backupsRoot(),
+      upload_dir_env: process.env.UPLOAD_DIR || '(no definida, usa uploads dentro de la app)',
+      backup_dir_env: process.env.BACKUP_DIR || '(no definida, usa backups dentro de la app)'
+    });
     iniciarAlertasCorreo();
     iniciarRespaldo();
   });
