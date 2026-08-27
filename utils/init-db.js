@@ -123,13 +123,70 @@ async function initializeDatabase() {
     ['fecha_nacimiento', 'fecha_nacimiento DATE NULL AFTER correo'],
     ['tipo_persona', "tipo_persona ENUM('asistencial', 'administrativo') NOT NULL DEFAULT 'administrativo' AFTER fecha_nacimiento"],
     ['forma_vinculacion', "forma_vinculacion ENUM('contrato_trabajo', 'prestacion_servicios', 'cooperativa') NULL AFTER tipo_persona"],
-    ['foto_path', 'foto_path VARCHAR(500) NULL AFTER forma_vinculacion']
+    ['foto_path', 'foto_path VARCHAR(500) NULL AFTER forma_vinculacion'],
+    ['acudiente_nombre', 'acudiente_nombre VARCHAR(180) NULL AFTER foto_path'],
+    ['acudiente_contacto', 'acudiente_contacto VARCHAR(80) NULL AFTER acudiente_nombre'],
+    ['riesgo_arl', "riesgo_arl ENUM('I','II','III','IV','V') NULL AFTER acudiente_contacto"],
+    ['proximo_examen_medico', 'proximo_examen_medico DATE NULL AFTER riesgo_arl'],
+    ['electrodiagnostico', 'electrodiagnostico TINYINT(1) NOT NULL DEFAULT 0 AFTER proximo_examen_medico'],
+    ['exige_telemedicina', 'exige_telemedicina TINYINT(1) NOT NULL DEFAULT 0 AFTER electrodiagnostico']
   ];
   for (const [name, ddl] of funcionarioCols) {
     if (!(await columnExists(conn, dbName, 'funcionarios', name))) {
       await conn.query(`ALTER TABLE funcionarios ADD COLUMN ${ddl}`);
     }
   }
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS cursos_certificados (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      nombre VARCHAR(200) NOT NULL,
+      horas DECIMAL(6,1) NULL,
+      fecha_certificacion DATE NULL,
+      archivo_nombre VARCHAR(255) NULL,
+      archivo_path VARCHAR(500) NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_curso_func (funcionario_id),
+      CONSTRAINT fk_curso_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS documentos_adicionales (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      descripcion VARCHAR(255) NOT NULL,
+      archivo_nombre VARCHAR(255) NOT NULL,
+      archivo_path VARCHAR(500) NOT NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_extra_func (funcionario_id),
+      CONSTRAINT fk_extra_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS contratos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      tipo ENUM('contrato', 'otrosi') NOT NULL DEFAULT 'contrato',
+      descripcion VARCHAR(255) NULL,
+      archivo_nombre VARCHAR(255) NOT NULL,
+      archivo_path VARCHAR(500) NOT NULL,
+      fecha_firma DATE NULL,
+      fecha_terminacion DATE NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_contrato_func (funcionario_id),
+      INDEX idx_contrato_vence (fecha_terminacion),
+      CONSTRAINT fk_contrato_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 
   await conn.query(`
     CREATE TABLE IF NOT EXISTS hojas_vida (

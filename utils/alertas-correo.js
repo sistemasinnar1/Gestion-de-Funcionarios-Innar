@@ -1,7 +1,7 @@
 const db = require('./db-mysql');
 const logger = require('./logger');
 const mailer = require('./mailer');
-const { armarChecklist, ALERTA_DIAS } = require('./documentos-catalogo');
+const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, daysUntil, estadoFecha } = require('./documentos-catalogo');
 const { auditarArchivos } = require('./respaldo');
 
 const JOB_KEY = 'alertas_digest_dia';
@@ -81,7 +81,8 @@ function escapeHtml(value) {
 
 async function recogerAlertas() {
   const personas = await db.query(
-    `SELECT id, nombres, apellidos, documento, fecha_nacimiento, tipo_persona
+    `SELECT id, nombres, apellidos, documento, fecha_nacimiento, tipo_persona,
+            electrodiagnostico, exige_telemedicina, proximo_examen_medico
      FROM funcionarios WHERE activo = 1
      ORDER BY apellidos, nombres`
   );
@@ -91,6 +92,8 @@ async function recogerAlertas() {
       porVencer: [],
       cumpleanos: [],
       incompletos: 0,
+      examen: [],
+      contratos: [],
       archivosFaltantes: await auditarArchivos()
     };
   }
@@ -104,19 +107,32 @@ async function recogerAlertas() {
      ORDER BY id DESC`,
     ids
   );
+  const contratosRows = await db.query(
+    `SELECT funcionario_id, fecha_terminacion, tipo, descripcion
+     FROM contratos
+     WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
+    ids
+  );
   const byPerson = {};
   docs.forEach((d) => {
     if (!byPerson[d.funcionario_id]) byPerson[d.funcionario_id] = [];
     byPerson[d.funcionario_id].push(d);
   });
+  const contratosBy = {};
+  contratosRows.forEach((c) => {
+    if (!contratosBy[c.funcionario_id]) contratosBy[c.funcionario_id] = [];
+    contratosBy[c.funcionario_id].push(c);
+  });
 
   const vencidos = [];
   const porVencer = [];
   const cumpleanos = [];
+  const examen = [];
+  const contratos = [];
   let incompletos = 0;
 
   personas.forEach((p) => {
-    const checklist = armarChecklist(p.tipo_persona, byPerson[p.id] || []);
+    const checklist = armarChecklist(p.tipo_persona, byPerson[p.id] || [], p);
     const faltan = checklist.filter((item) => item.required && item.estado !== 'cargado' && item.estado !== 'por_vencer').length;
     if (faltan > 0) incompletos += 1;
     const persona = nombreDe(p);
@@ -132,6 +148,25 @@ async function recogerAlertas() {
       if (item.estado === 'vencido') vencidos.push(row);
       else porVencer.push(row);
     });
+    const examEstado = estadoFecha(p.proximo_examen_medico, ALERTA_DIAS);
+    if (examEstado === 'vencido' || examEstado === 'por_vencer') {
+      examen.push({
+        persona,
+        vence: formatFecha(p.proximo_examen_medico),
+        estado: examEstado
+      });
+    }
+    (contratosBy[p.id] || []).forEach((c) => {
+      const st = estadoFecha(c.fecha_terminacion, CONTRATO_ALERTA_DIAS);
+      if (st === 'vencido' || st === 'por_vencer') {
+        contratos.push({
+          persona,
+          requisito: c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato',
+          vence: formatFecha(c.fecha_terminacion),
+          estado: st
+        });
+      }
+    });
     const days = cumpleEnDias(p.fecha_nacimiento);
     if (days != null && days >= 0 && days <= 7) {
       cumpleanos.push({
@@ -146,6 +181,8 @@ async function recogerAlertas() {
     porVencer,
     cumpleanos,
     incompletos,
+    examen,
+    contratos,
     archivosFaltantes: await auditarArchivos()
   };
 }
@@ -157,7 +194,10 @@ function listaHtml(items, linea) {
 
 function armarMensaje(data) {
   const nArchivos = (data.archivosFaltantes || []).length;
-  const nAlertas = data.vencidos.length + data.porVencer.length + data.cumpleanos.length + nArchivos;
+  const examen = data.examen || [];
+  const contratos = data.contratos || [];
+  const nAlertas = data.vencidos.length + data.porVencer.length + data.cumpleanos.length
+    + nArchivos + examen.length + contratos.length;
   const subject = nArchivos
     ? `INNAR Gestión — ${nArchivos} archivo(s) faltan en disco`
     : (nAlertas
@@ -172,6 +212,12 @@ function armarMensaje(data) {
     '',
     `Por vencer en ${ALERTA_DIAS} días (${data.porVencer.length}):`,
     ...data.porVencer.map((r) => `- ${r.persona}: ${r.requisito} (vence ${r.vence})`),
+    '',
+    `Examen médico periódico (${examen.length}):`,
+    ...examen.map((r) => `- ${r.persona}: ${r.estado} (${r.vence})`),
+    '',
+    `Contratos / otrosíes (${contratos.length}, aviso ${CONTRATO_ALERTA_DIAS} días):`,
+    ...contratos.map((r) => `- ${r.persona}: ${r.requisito} ${r.estado} (${r.vence})`),
     '',
     `Cumpleaños esta semana (${data.cumpleanos.length}):`,
     ...data.cumpleanos.map((r) => `- ${r.persona} (${r.cuando})`),
@@ -199,12 +245,16 @@ function armarMensaje(data) {
         <tr>
           <td style="padding:28px;">
             <p style="margin:0 0 18px;color:#64748b;line-height:1.5;">
-              Resumen diario. Los cursos vencidos no cuentan como listos. La vigencia de los cursos de 2 años se revisa a ${ALERTA_DIAS} días.
+              Resumen diario. Incluye documentos, examen periódico y contratos (aviso ${CONTRATO_ALERTA_DIAS} días).
             </p>
             <p style="margin:0 0 8px;font-weight:800;color:#9f1239;">Vencidos (${data.vencidos.length})</p>
             ${listaHtml(data.vencidos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (venció ${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#b45309;">Por vencer (${data.porVencer.length})</p>
             ${listaHtml(data.porVencer, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (vence ${escapeHtml(r.vence)})`)}
+            <p style="margin:18px 0 8px;font-weight:800;color:#0f766e;">Examen médico periódico (${examen.length})</p>
+            ${listaHtml(examen, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
+            <p style="margin:18px 0 8px;font-weight:800;color:#1d4ed8;">Contratos / otrosíes (${contratos.length})</p>
+            ${listaHtml(contratos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#5b21b6;">Cumpleaños esta semana (${data.cumpleanos.length})</p>
             ${listaHtml(data.cumpleanos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.cuando)}`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Archivos faltantes en disco (${nArchivos})</p>
@@ -235,7 +285,10 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
       return { ok: true, skipped: true, reason: 'ya_enviado_hoy' };
     }
     const data = await recogerAlertas();
-    if (!data.vencidos.length && !data.porVencer.length && !data.cumpleanos.length && !(data.archivosFaltantes || []).length) {
+    if (!data.vencidos.length && !data.porVencer.length && !data.cumpleanos.length
+      && !(data.archivosFaltantes || []).length
+      && !(data.examen || []).length
+      && !(data.contratos || []).length) {
       await marcarEnviadoHoy();
       return { ok: true, skipped: true, reason: 'sin_alertas' };
     }

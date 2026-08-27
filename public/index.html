@@ -193,9 +193,46 @@
           <h3 class="hv-section-title">Requisitos para contratar</h3>
           <p id="hvSlotsSub" class="hv-slots-sub">Cada documento tiene su espacio, esté o no cargado.</p>
         </div>
-        <div id="hvMissingChip" class="hv-missing-chip" hidden></div>
+        <div class="hv-slots-actions">
+          <div id="hvMissingChip" class="hv-missing-chip" hidden></div>
+          <button type="button" id="btnHvDescargar" class="btn-soft">Descargar PDF</button>
+        </div>
       </div>
       <div id="hvDocs" class="hv-slots"></div>
+
+      <section class="hv-panel" id="hvPanelCursos">
+        <div class="hv-panel-head">
+          <div>
+            <h3 class="hv-section-title">Registro de cursos</h3>
+            <p class="hv-slots-sub">Nombre, horas y fecha de certificación de cada curso aportado.</p>
+          </div>
+          <button type="button" id="btnHvCursoNuevo" class="btn-soft">Agregar curso</button>
+        </div>
+        <div id="hvCursosTabla" class="hv-table-wrap"></div>
+      </section>
+
+      <section class="hv-panel" id="hvPanelExtras">
+        <div class="hv-panel-head">
+          <div>
+            <h3 class="hv-section-title">Documentación adicional</h3>
+            <p class="hv-slots-sub">Archivos distintos a los exigidos por norma, con su descripción.</p>
+          </div>
+          <button type="button" id="btnHvExtraNuevo" class="btn-soft">Agregar documento</button>
+        </div>
+        <div id="hvExtrasTabla" class="hv-table-wrap"></div>
+      </section>
+
+      <section class="hv-panel" id="hvPanelContratos">
+        <div class="hv-panel-head">
+          <div>
+            <h3 class="hv-section-title">Contrato y otrosíes</h3>
+            <p class="hv-slots-sub">Fecha de firma y terminación. El sistema avisa 1 mes y 2 días antes del vencimiento.</p>
+            <div id="hvContratoAlerta" class="hv-missing-chip hv-panel-alert" hidden></div>
+          </div>
+          <button type="button" id="btnHvContratoNuevo" class="btn-soft">Agregar contrato / otrosí</button>
+        </div>
+        <div id="hvContratosTabla" class="hv-table-wrap"></div>
+      </section>
     </main>
   </div>
 
@@ -206,12 +243,12 @@
         <p class="panel-lead">Según el tipo, la carpeta pedirá solo los documentos exigibles.</p>
         <div class="hv-tipo-grid">
           <button type="button" class="hv-tipo-btn" data-tipo="asistencial">
-            <strong>Asistencial</strong>
-            <span>Contacto con el paciente. Incluye RETHUS y los cursos de 2 años.</span>
+            <strong>Área asistencial</strong>
+            <span>Contacto con pacientes: médicos, especialistas, auxiliares, terapias, psicología, etc. Exige RETHUS, carnet de vacunación y cursos de 2 años.</span>
           </button>
           <button type="button" class="hv-tipo-btn" data-tipo="administrativo">
-            <strong>Administrativo</strong>
-            <span>Sin contacto con el paciente. No pide RETHUS ni esos cursos.</span>
+            <strong>Área administrativa</strong>
+            <span>Sin contacto con el paciente. No exige RETHUS, vacunación ni cursos clínicos de 2 años.</span>
           </button>
         </div>
         <button type="button" id="btnHvNuevoCerrarTipo" class="btn-ghost">Cancelar</button>
@@ -263,7 +300,40 @@
         </div>
         <div class="form-group">
           <label for="hvArea">Área</label>
-          <input id="hvArea" maxlength="120" />
+          <select id="hvArea">
+            <option value="Asistencial">Asistencial</option>
+            <option value="Administrativa">Administrativa</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="hvAcudienteNombre">Acudiente (nombre)</label>
+          <input id="hvAcudienteNombre" maxlength="180" placeholder="Nombre completo del acudiente" />
+        </div>
+        <div class="form-group">
+          <label for="hvAcudienteContacto">Acudiente (contacto)</label>
+          <input id="hvAcudienteContacto" maxlength="80" placeholder="Teléfono o correo" />
+        </div>
+        <div id="hvFlagsAsistencial" class="hv-flags hidden">
+          <div class="hv-flags-head">
+            <span class="hv-flags-title">Requisitos específicos</span>
+            <span class="hv-flags-sub">Solo si aplican a esta persona</span>
+          </div>
+          <label class="hv-flag" for="hvElectro">
+            <input type="checkbox" id="hvElectro" />
+            <span class="hv-flag-box" aria-hidden="true"></span>
+            <span class="hv-flag-text">
+              <span class="hv-flag-name">Electrodiagnóstico</span>
+              <span class="hv-flag-desc">Activa el requisito de certificado RCP</span>
+            </span>
+          </label>
+          <label class="hv-flag" for="hvTelemedicina">
+            <input type="checkbox" id="hvTelemedicina" />
+            <span class="hv-flag-box" aria-hidden="true"></span>
+            <span class="hv-flag-text">
+              <span class="hv-flag-name">Telemedicina</span>
+              <span class="hv-flag-desc">Exige el certificado de telemedicina (vigencia 2 años)</span>
+            </span>
+          </label>
         </div>
         <div id="hvNuevoError" class="login-error hidden"></div>
         <button type="submit" id="btnHvGuardar" class="btn-login">Guardar</button>
@@ -296,6 +366,18 @@
         <label for="hvPdfVence">Fecha de vencimiento de la póliza</label>
         <input id="hvPdfVence" type="date" />
       </div>
+      <div id="hvPdfExtraRiesgo" class="form-group hidden">
+        <label for="hvPdfRiesgo">Clase de riesgo ARL</label>
+        <select id="hvPdfRiesgo">
+          <option value="">Selecciona…</option>
+          <option value="I">I — Mínimo (examen cada 5 años)</option>
+          <option value="II">II — Bajo (cada 3 años)</option>
+          <option value="III">III — Medio (cada 2 años)</option>
+          <option value="IV">IV — Alto (cada año)</option>
+          <option value="V">V — Máximo (cada año)</option>
+        </select>
+        <p class="field-hint">Con el riesgo y la fecha del examen se calcula el próximo examen periódico.</p>
+      </div>
       <div id="hvPdfError" class="login-error hidden"></div>
       <button type="submit" id="btnHvPdfGuardar" class="btn-login">Subir</button>
       <button type="button" id="btnHvPdfCerrar" class="btn-ghost">Cancelar</button>
@@ -319,6 +401,96 @@
       <div id="hvInactivarError" class="login-error hidden"></div>
       <button type="submit" id="btnHvInactivarOk" class="btn-login">Inactivar</button>
       <button type="button" id="btnHvInactivarCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvCurso" class="hv-dialog">
+    <form id="formHvCurso" class="login-form">
+      <h3>Agregar curso</h3>
+      <div class="form-group">
+        <label for="hvCursoNombre">Nombre del curso</label>
+        <input id="hvCursoNombre" required maxlength="200" />
+      </div>
+      <div class="form-group">
+        <label for="hvCursoHoras">Horas</label>
+        <input id="hvCursoHoras" type="number" min="0" step="0.5" required />
+      </div>
+      <div class="form-group">
+        <label for="hvCursoFecha">Fecha de certificación</label>
+        <input id="hvCursoFecha" type="date" required />
+      </div>
+      <div class="form-group">
+        <label for="hvCursoArchivo">Constancia (PDF, JPG o PNG)</label>
+        <input id="hvCursoArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required />
+      </div>
+      <div id="hvCursoError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar curso</button>
+      <button type="button" id="btnHvCursoCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvExtra" class="hv-dialog">
+    <form id="formHvExtra" class="login-form">
+      <h3>Documento adicional</h3>
+      <div class="form-group">
+        <label for="hvExtraDesc">Descripción</label>
+        <input id="hvExtraDesc" required maxlength="255" placeholder="Ej. Carta de recomendación, paz y salvo…" />
+      </div>
+      <div class="form-group">
+        <label for="hvExtraArchivo">Archivo</label>
+        <input id="hvExtraArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required />
+      </div>
+      <div id="hvExtraError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnHvExtraCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvContrato" class="hv-dialog">
+    <form id="formHvContrato" class="login-form">
+      <h3>Contrato u otrosí</h3>
+      <div class="form-group">
+        <label for="hvContratoTipo">Tipo</label>
+        <select id="hvContratoTipo" required>
+          <option value="contrato">Contrato</option>
+          <option value="otrosi">Otrosí</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="hvContratoDesc">Descripción (opcional)</label>
+        <input id="hvContratoDesc" maxlength="255" />
+      </div>
+      <div class="form-group">
+        <label for="hvContratoFirma">Fecha de firma</label>
+        <input id="hvContratoFirma" type="date" required />
+      </div>
+      <div class="form-group">
+        <label for="hvContratoFin">Fecha de terminación</label>
+        <input id="hvContratoFin" type="date" required />
+        <p class="field-hint">Se avisará 32 días antes (1 mes + 2 días).</p>
+      </div>
+      <div class="form-group">
+        <label for="hvContratoArchivo">Archivo</label>
+        <input id="hvContratoArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required />
+      </div>
+      <div id="hvContratoError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnHvContratoCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvDescarga" class="hv-dialog hv-dialog-wide">
+    <form id="formHvDescarga" class="login-form">
+      <h3>Descargar expediente en PDF</h3>
+      <p class="panel-lead">Elige todos o marca los archivos que quieras unir en un solo PDF.</p>
+      <label class="hv-check">
+        <input type="checkbox" id="hvDescargaTodos" />
+        Descargar todo el expediente
+      </label>
+      <div id="hvDescargaLista" class="hv-descarga-lista"></div>
+      <div id="hvDescargaError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Generar PDF</button>
+      <button type="button" id="btnHvDescargaCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
 

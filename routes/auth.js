@@ -70,10 +70,11 @@ router.post('/acceso/solicitar', async (req, res) => {
       [email]
     );
 
-    const payload = { ok: true, message: GENERIC_OK, expires_min: EXPIRY_MINUTES };
-
     if (!user) {
-      return res.json(payload);
+      await rateLimiter.recordFailedAttempt(clientIP, email);
+      return res.status(403).json({
+        error: 'Ese correo no tiene acceso. Usa el correo autorizado para entrar.'
+      });
     }
 
     const recent = await db.queryOne(
@@ -86,10 +87,14 @@ router.post('/acceso/solicitar', async (req, res) => {
     );
 
     if (Number(recent?.n) >= MAX_CODES_PER_WINDOW || recent?.en_cooldown) {
-      return res.json(payload);
+      return res.status(429).json({
+        error: 'Ya enviamos un código a ese correo. Revisa la bandeja y el spam, o espera un minuto para pedir otro.',
+        minutos_restantes: 1
+      });
     }
 
     const { raw, display } = generateCode();
+    const payload = { ok: true, message: GENERIC_OK, expires_min: EXPIRY_MINUTES };
     const mail = await mailer.sendAccessCode({
       to: user.email,
       nombre: user.nombre,

@@ -15,7 +15,8 @@ const WATCHED = [
   'utils/alertas-correo.js',
   'utils/mailer.js',
   'utils/storage.js',
-  'utils/respaldo.js'
+  'utils/respaldo.js',
+  'utils/pdf-pack.js'
 ];
 
 function getBuildId() {

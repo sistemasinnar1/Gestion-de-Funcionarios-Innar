@@ -224,6 +224,7 @@ function formatCumple(iso) {
 function payloadPersona() {
   const tipoSelect = $('hvTipoPersonaSelect');
   const tipo = ($('hvTipoPersona').value || tipoSelect?.value || '').trim();
+  const areaSelect = $('hvArea')?.value || '';
   return {
     nombres: $('hvNombres').value.trim(),
     apellidos: $('hvApellidos').value.trim(),
@@ -232,10 +233,28 @@ function payloadPersona() {
     correo: $('hvCorreo').value.trim(),
     forma_vinculacion: $('hvVinculacion').value,
     cargo: $('hvCargo').value.trim(),
-    area: $('hvArea').value.trim(),
+    area: areaSelect || (tipo === 'asistencial' ? 'Asistencial' : 'Administrativa'),
     tipo_persona: tipo,
+    acudiente_nombre: $('hvAcudienteNombre')?.value.trim() || '',
+    acudiente_contacto: $('hvAcudienteContacto')?.value.trim() || '',
+    electrodiagnostico: $('hvElectro')?.checked ? 1 : 0,
+    exige_telemedicina: $('hvTelemedicina')?.checked ? 1 : 0,
     fecha_nacimiento: hvEditId ? (hvFolderData?.funcionario?.fecha_nacimiento || null) : null
   };
+}
+
+function syncFlagsAsistencial(tipo) {
+  const wrap = $('hvFlagsAsistencial');
+  if (!wrap) return;
+  const asis = tipo === 'asistencial';
+  wrap.classList.toggle('hidden', !asis);
+  if (!asis) {
+    if ($('hvElectro')) $('hvElectro').checked = false;
+    if ($('hvTelemedicina')) $('hvTelemedicina').checked = false;
+  }
+  if ($('hvArea') && !hvEditId) {
+    $('hvArea').value = asis ? 'Asistencial' : 'Administrativa';
+  }
 }
 
 function mostrarPasoTipo() {
@@ -251,9 +270,10 @@ function mostrarPasoDatos(tipo, editando) {
   $('hvTipoEditWrap').classList.toggle('hidden', !editando);
   $('hvNuevoTitulo').textContent = editando ? 'Editar datos' : 'Nuevo colaborador';
   $('hvNuevoTipoLabel').textContent = tipo === 'asistencial'
-    ? 'Asistencial — contacto con el paciente'
-    : 'Administrativo — sin contacto con el paciente';
+    ? 'Área asistencial — contacto con el paciente'
+    : 'Área administrativa — sin contacto con el paciente';
   $('btnHvNuevoAtras').classList.toggle('hidden', Boolean(editando));
+  syncFlagsAsistencial(tipo);
 }
 
 function resetDialogoNuevo() {
@@ -272,16 +292,30 @@ function llenarFormulario(f) {
   $('hvCorreo').value = f.correo || '';
   $('hvVinculacion').value = f.forma_vinculacion || '';
   $('hvCargo').value = f.cargo || '';
-  $('hvArea').value = f.area || '';
+  const area = f.area || (f.tipo_persona === 'asistencial' ? 'Asistencial' : 'Administrativa');
+  if ($('hvArea')) {
+    if (![...$('hvArea').options].some((o) => o.value === area)) {
+      const opt = document.createElement('option');
+      opt.value = area;
+      opt.textContent = area;
+      $('hvArea').appendChild(opt);
+    }
+    $('hvArea').value = area;
+  }
   $('hvTipoPersona').value = f.tipo_persona || '';
   if ($('hvTipoPersonaSelect')) $('hvTipoPersonaSelect').value = f.tipo_persona || 'administrativo';
+  if ($('hvAcudienteNombre')) $('hvAcudienteNombre').value = f.acudiente_nombre || '';
+  if ($('hvAcudienteContacto')) $('hvAcudienteContacto').value = f.acudiente_contacto || '';
+  if ($('hvElectro')) $('hvElectro').checked = Number(f.electrodiagnostico) === 1;
+  if ($('hvTelemedicina')) $('hvTelemedicina').checked = Number(f.exige_telemedicina) === 1;
+  syncFlagsAsistencial(f.tipo_persona);
 }
 
 const HV_GRUPOS = [
-  { label: 'Identificación', tipos: ['hoja_vida', 'cedula'] },
+  { label: 'Identificación', tipos: ['hoja_vida', 'cedula', 'autorizacion_datos'] },
   { label: 'Formación', tipos: ['titulo_bachiller', 'acta_bachiller', 'titulo_profesional', 'acta_profesional', 'rethus'] },
+  { label: 'Salud ocupacional y afiliaciones', tipos: ['examen_medico', 'recomendaciones_medico', 'afiliacion_salud', 'afiliacion_pension', 'afiliacion_arl', 'carnet_vacunacion', 'certificado_rcp'] },
   { label: 'Cursos y experiencia', tipos: ['cursos_generales', 'constancias_trabajo'] },
-  { label: 'Afiliaciones y salud', tipos: ['examen_medico', 'afiliacion_salud', 'afiliacion_pension', 'afiliacion_arl'] },
   { label: 'Cursos de 2 años', tipos: ['curso_violencia_sexual', 'curso_soporte_vital', 'curso_duelo', 'curso_telemedicina'] },
   { label: 'Contratación', tipos: ['poliza_rc', 'rut'] }
 ];
@@ -512,20 +546,24 @@ function renderFicha(f, progreso) {
   const faltan = faltantesDe(progreso);
   const items = [
     ['Documento', f.documento],
-    ['Tipo', f.tipo_label],
+    ['Área', f.tipo_label || f.area],
     ['Vinculación', f.forma_label],
     ['Teléfono', f.telefono],
     ['Correo', f.correo],
     ['Cargo', f.cargo],
-    ['Área', f.area],
+    ['Acudiente', f.acudiente_nombre ? `${f.acudiente_nombre}${f.acudiente_contacto ? ` · ${f.acudiente_contacto}` : ''}` : '—'],
+    ['Riesgo ARL', f.riesgo_arl_label || f.riesgo_arl || 'Pendiente'],
+    ['Próximo examen', f.proximo_examen_medico ? formatFecha(f.proximo_examen_medico) : 'Se calcula con examen + riesgo ARL'],
+    ['Electrodiagnóstico', Number(f.electrodiagnostico) === 1 ? 'Sí (exige RCP)' : 'No'],
+    ['Telemedicina', Number(f.exige_telemedicina) === 1 ? 'Exigible' : 'No exigida'],
     ['Cumpleaños', f.fecha_nacimiento ? formatCumple(f.fecha_nacimiento) : 'Pendiente (al cargar la cédula)'],
     ['Archivos', faltan > 0 ? `Faltan ${faltan}` : `${progreso?.cargados || 0}/${progreso?.requeridos || 0} listos`]
   ];
-  $('hvFicha').innerHTML = items.map(([k, v]) => `
-    <div>
+  $('hvFicha').innerHTML = `<dl class="hv-ficha-grid">${items.map(([k, v]) => `
+    <div class="hv-ficha-item">
       <dt>${escapeHtml(k)}</dt>
       <dd>${escapeHtml(v || '—')}</dd>
-    </div>`).join('');
+    </div>`).join('')}</dl>`;
 }
 
 function textoSlot(req) {
@@ -544,7 +582,7 @@ function textoSlot(req) {
 
 function htmlArchivoFila(a) {
   return `<div class="hv-slot-file">
-    <span>${escapeHtml(a.nombre)}${a.creado_en ? ` · ${formatFecha(a.creado_en)}` : ''}</span>
+    <span class="hv-slot-file-name">${escapeHtml(a.nombre)}${a.creado_en ? ` · ${formatFecha(a.creado_en)}` : ''}</span>
     <button type="button" data-doc="${a.id}">Ver</button>
   </div>`;
 }
@@ -616,6 +654,124 @@ function renderRequisitos(requisitos, progreso, readOnly) {
   }
 }
 
+function renderCursos(lista, readOnly) {
+  const el = $('hvCursosTabla');
+  if (!el) return;
+  const rows = lista || [];
+  if (!rows.length) {
+    el.innerHTML = '<p class="hv-empty-table">Aún no hay cursos registrados.</p>';
+    return;
+  }
+  el.innerHTML = `<table class="hv-table"><thead><tr>
+    <th>Curso</th><th>Horas</th><th>Certificación</th><th>Acciones</th>
+  </tr></thead><tbody>${rows.map((c) => `
+    <tr>
+      <td class="hv-td-clip">${escapeHtml(c.nombre)}</td>
+      <td>${escapeHtml(String(c.horas ?? '—'))}</td>
+      <td>${c.fecha_certificacion ? formatFecha(c.fecha_certificacion) : '—'}</td>
+      <td class="hv-row-actions">
+        ${c.archivo_path || c.id ? `<button type="button" data-curso-ver="${c.id}">Ver</button>` : ''}
+        ${readOnly ? '' : `<button type="button" class="is-danger" data-curso-del="${c.id}">Quitar</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function renderExtras(lista, readOnly) {
+  const el = $('hvExtrasTabla');
+  if (!el) return;
+  const rows = lista || [];
+  if (!rows.length) {
+    el.innerHTML = '<p class="hv-empty-table">Sin documentación adicional.</p>';
+    return;
+  }
+  el.innerHTML = `<table class="hv-table"><thead><tr>
+    <th>Descripción</th><th>Archivo</th><th>Acciones</th>
+  </tr></thead><tbody>${rows.map((c) => `
+    <tr>
+      <td class="hv-td-clip">${escapeHtml(c.descripcion)}</td>
+      <td class="hv-td-clip">${escapeHtml(c.archivo_nombre || '—')}</td>
+      <td class="hv-row-actions">
+        <button type="button" data-extra-ver="${c.id}">Ver</button>
+        ${readOnly ? '' : `<button type="button" class="is-danger" data-extra-del="${c.id}">Quitar</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function renderContratos(lista, readOnly) {
+  const el = $('hvContratosTabla');
+  const alerta = $('hvContratoAlerta');
+  if (!el) return;
+  const rows = lista || [];
+  if (alerta) {
+    const prox = hvFolderData?.progreso?.contrato_estado;
+    const fin = rows
+      .map((r) => r.fecha_terminacion)
+      .filter(Boolean)
+      .sort()[0];
+    if (prox === 'vencido') {
+      alerta.hidden = false;
+      alerta.className = 'hv-missing-chip';
+      alerta.innerHTML = `${ICON_ALERT}<span>Hay contrato vencido</span>`;
+    } else if (prox === 'por_vencer') {
+      alerta.hidden = false;
+      alerta.className = 'hv-missing-chip';
+      alerta.innerHTML = `${ICON_ALERT}<span>Contrato por vencer${fin ? ` el ${formatFecha(fin)}` : ''} (aviso 1 mes + 2 días)</span>`;
+    } else {
+      alerta.hidden = true;
+    }
+  }
+  if (!rows.length) {
+    el.innerHTML = '<p class="hv-empty-table">Aún no hay contrato ni otrosíes.</p>';
+    return;
+  }
+  el.innerHTML = `<table class="hv-table"><thead><tr>
+    <th>Tipo</th><th>Descripción</th><th>Firma</th><th>Terminación</th><th>Acciones</th>
+  </tr></thead><tbody>${rows.map((c) => `
+    <tr>
+      <td>${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}</td>
+      <td class="hv-td-clip">${escapeHtml(c.descripcion || c.archivo_nombre || '—')}</td>
+      <td>${c.fecha_firma ? formatFecha(c.fecha_firma) : '—'}</td>
+      <td>${c.fecha_terminacion ? formatFecha(c.fecha_terminacion) : '—'}</td>
+      <td class="hv-row-actions">
+        <button type="button" data-contrato-ver="${c.id}">Ver</button>
+        ${readOnly ? '' : `<button type="button" class="is-danger" data-contrato-del="${c.id}">Quitar</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function pintarPanelesExtras(data, readOnly) {
+  renderCursos(data.cursos || [], readOnly);
+  renderExtras(data.adicionales || [], readOnly);
+  renderContratos(data.contratos || [], readOnly);
+  ['btnHvCursoNuevo', 'btnHvExtraNuevo', 'btnHvContratoNuevo'].forEach((id) => {
+    if ($(id)) $(id).hidden = readOnly;
+  });
+}
+
+function abrirDialogoDescarga() {
+  const lista = $('hvDescargaLista');
+  if (!lista || !hvFolderData) return;
+  const bits = [];
+  (hvFolderData.requisitos || []).forEach((req) => {
+    (req.archivos || []).forEach((a) => {
+      bits.push(`<label class="hv-check"><input type="checkbox" name="doc" value="${a.id}"/><span class="hv-check-text">${escapeHtml(req.label)} — ${escapeHtml(a.nombre)}</span></label>`);
+    });
+  });
+  (hvFolderData.cursos || []).forEach((c) => {
+    bits.push(`<label class="hv-check"><input type="checkbox" name="curso" value="${c.id}"/><span class="hv-check-text">Curso: ${escapeHtml(c.nombre)}</span></label>`);
+  });
+  (hvFolderData.adicionales || []).forEach((c) => {
+    bits.push(`<label class="hv-check"><input type="checkbox" name="extra" value="${c.id}"/><span class="hv-check-text">Extra: ${escapeHtml(c.descripcion)}</span></label>`);
+  });
+  (hvFolderData.contratos || []).forEach((c) => {
+    bits.push(`<label class="hv-check"><input type="checkbox" name="contrato" value="${c.id}"/><span class="hv-check-text">${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}: ${escapeHtml(c.descripcion || c.archivo_nombre || '')}</span></label>`);
+  });
+  lista.innerHTML = bits.length ? bits.join('') : '<p class="hv-empty-table">No hay archivos para descargar.</p>';
+  if ($('hvDescargaTodos')) $('hvDescargaTodos').checked = false;
+  setError('hvDescargaError', '');
+  $('dlgHvDescarga').showModal();
+}
+
 async function abrirCarpeta(id) {
   hvFolderId = id;
   setError('hvFolderError', '');
@@ -640,6 +796,7 @@ async function abrirCarpeta(id) {
     if ($('btnHvInactivar')) $('btnHvInactivar').textContent = activo ? 'Inactivar' : 'Reactivar';
     renderFicha(f, data.progreso);
     renderRequisitos(data.requisitos || [], data.progreso, !activo);
+    pintarPanelesExtras(data, !activo);
     showView('view-hv-folder');
     if (location.hash !== `#hv/${id}`) {
       history.pushState({ view: 'hv-folder', id }, '', `#hv/${id}`);
@@ -702,6 +859,15 @@ function abrirDialogoSubida(tipo, file) {
   $('hvPdfExtraNac').classList.toggle('hidden', !req.pideFechaNacimiento);
   $('hvPdfExtraCurso').classList.toggle('hidden', req.pideFecha !== 'documento');
   $('hvPdfExtraPoliza').classList.toggle('hidden', req.pideFecha !== 'vencimiento');
+  if ($('hvPdfExtraRiesgo')) {
+    $('hvPdfExtraRiesgo').classList.toggle('hidden', !req.pideRiesgoArl);
+    $('hvPdfRiesgo').value = hvFolderData.funcionario.riesgo_arl || '';
+    $('hvPdfRiesgo').required = Boolean(req.pideRiesgoArl);
+  }
+  if (req.pideFecha === 'documento' && req.labelFecha && $('hvPdfExtraCurso')) {
+    const lab = $('hvPdfExtraCurso').querySelector('label');
+    if (lab) lab.textContent = req.labelFecha;
+  }
   $('hvPdfNacimiento').required = Boolean(req.pideFechaNacimiento) && !hvFolderData.funcionario.fecha_nacimiento;
   $('hvPdfFechaDoc').required = req.pideFecha === 'documento';
   $('hvPdfVence').required = req.pideFecha === 'vencimiento';
@@ -733,7 +899,7 @@ function recibirArchivoEnSlot(tipo, file) {
   if (!fichaActiva()) return;
   const req = (hvFolderData?.requisitos || []).find((r) => r.tipo === tipo);
   if (!req || !file) return;
-  if (req.pideFecha || req.pideFechaNacimiento) {
+  if (req.pideFecha || req.pideFechaNacimiento || req.pideRiesgoArl) {
     abrirDialogoSubida(tipo, file);
     return;
   }
@@ -1025,6 +1191,200 @@ function setupHojasVida() {
     resetDialogoNuevo();
     $('dlgHvNuevo').showModal();
   });
+  $('btnHvDescargar')?.addEventListener('click', abrirDialogoDescarga);
+  $('btnHvDescargaCerrar')?.addEventListener('click', () => $('dlgHvDescarga')?.close());
+  $('hvDescargaTodos')?.addEventListener('change', (e) => {
+    $('hvDescargaLista')?.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.checked = e.target.checked;
+      cb.disabled = e.target.checked;
+    });
+  });
+  $('formHvDescarga')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId) return;
+    setError('hvDescargaError', '');
+    const todos = Boolean($('hvDescargaTodos')?.checked);
+    const body = {
+      todos,
+      documentos: [...document.querySelectorAll('#hvDescargaLista input[name="doc"]:checked')].map((el) => Number(el.value)),
+      cursos: [...document.querySelectorAll('#hvDescargaLista input[name="curso"]:checked')].map((el) => Number(el.value)),
+      adicionales: [...document.querySelectorAll('#hvDescargaLista input[name="extra"]:checked')].map((el) => Number(el.value)),
+      contratos: [...document.querySelectorAll('#hvDescargaLista input[name="contrato"]:checked')].map((el) => Number(el.value))
+    };
+    if (!todos && !body.documentos.length && !body.cursos.length && !body.adicionales.length && !body.contratos.length) {
+      setError('hvDescargaError', 'Selecciona al menos un archivo');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/descarga-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError('hvDescargaError', data.error || 'No se pudo generar el PDF');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `expediente-${hvFolderId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      $('dlgHvDescarga').close();
+    } catch (_) {
+      setError('hvDescargaError', 'Error de conexión');
+    }
+  });
+
+  $('btnHvCursoNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvCurso')?.reset();
+    setError('hvCursoError', '');
+    $('dlgHvCurso').showModal();
+  });
+  $('btnHvCursoCerrar')?.addEventListener('click', () => $('dlgHvCurso')?.close());
+  $('formHvCurso')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId || !fichaActiva()) return;
+    const archivo = $('hvCursoArchivo')?.files?.[0];
+    if (!archivo) return;
+    setError('hvCursoError', '');
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    fd.append('nombre', $('hvCursoNombre').value.trim());
+    fd.append('horas', $('hvCursoHoras').value);
+    fd.append('fecha_certificacion', $('hvCursoFecha').value);
+    try {
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/cursos`, {
+        method: 'POST',
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
+        credentials: 'include',
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvCursoError', data.error || 'No se pudo guardar');
+        return;
+      }
+      $('dlgHvCurso').close();
+      await abrirCarpeta(hvFolderId);
+    } catch (_) {
+      setError('hvCursoError', 'Error de conexión');
+    }
+  });
+
+  $('btnHvExtraNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvExtra')?.reset();
+    setError('hvExtraError', '');
+    $('dlgHvExtra').showModal();
+  });
+  $('btnHvExtraCerrar')?.addEventListener('click', () => $('dlgHvExtra')?.close());
+  $('formHvExtra')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId || !fichaActiva()) return;
+    const archivo = $('hvExtraArchivo')?.files?.[0];
+    if (!archivo) return;
+    setError('hvExtraError', '');
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    fd.append('descripcion', $('hvExtraDesc').value.trim());
+    try {
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/adicionales`, {
+        method: 'POST',
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
+        credentials: 'include',
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvExtraError', data.error || 'No se pudo guardar');
+        return;
+      }
+      $('dlgHvExtra').close();
+      await abrirCarpeta(hvFolderId);
+    } catch (_) {
+      setError('hvExtraError', 'Error de conexión');
+    }
+  });
+
+  $('btnHvContratoNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvContrato')?.reset();
+    setError('hvContratoError', '');
+    $('dlgHvContrato').showModal();
+  });
+  $('btnHvContratoCerrar')?.addEventListener('click', () => $('dlgHvContrato')?.close());
+  $('formHvContrato')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId || !fichaActiva()) return;
+    const archivo = $('hvContratoArchivo')?.files?.[0];
+    if (!archivo) return;
+    setError('hvContratoError', '');
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    fd.append('tipo', $('hvContratoTipo').value);
+    fd.append('descripcion', $('hvContratoDesc').value.trim());
+    fd.append('fecha_firma', $('hvContratoFirma').value);
+    fd.append('fecha_terminacion', $('hvContratoFin').value);
+    try {
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/contratos`, {
+        method: 'POST',
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
+        credentials: 'include',
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvContratoError', data.error || 'No se pudo guardar');
+        return;
+      }
+      $('dlgHvContrato').close();
+      await abrirCarpeta(hvFolderId);
+      cargarFuncionarios();
+    } catch (_) {
+      setError('hvContratoError', 'Error de conexión');
+    }
+  });
+
+  const panelClick = async (e) => {
+    if (!hvFolderId) return;
+    const cursoVer = e.target.closest('[data-curso-ver]');
+    const cursoDel = e.target.closest('[data-curso-del]');
+    const extraVer = e.target.closest('[data-extra-ver]');
+    const extraDel = e.target.closest('[data-extra-del]');
+    const contratoVer = e.target.closest('[data-contrato-ver]');
+    const contratoDel = e.target.closest('[data-contrato-del]');
+    if (cursoVer) window.open(`/api/funcionarios/${hvFolderId}/cursos/${cursoVer.getAttribute('data-curso-ver')}/archivo`, '_blank');
+    if (extraVer) window.open(`/api/funcionarios/${hvFolderId}/adicionales/${extraVer.getAttribute('data-extra-ver')}/archivo`, '_blank');
+    if (contratoVer) window.open(`/api/funcionarios/${hvFolderId}/contratos/${contratoVer.getAttribute('data-contrato-ver')}/archivo`, '_blank');
+    if (cursoDel && fichaActiva()) {
+      if (!confirm('¿Quitar este curso?')) return;
+      await apiFetch(`/api/funcionarios/${hvFolderId}/cursos/${cursoDel.getAttribute('data-curso-del')}`, { method: 'DELETE' });
+      await abrirCarpeta(hvFolderId);
+    }
+    if (extraDel && fichaActiva()) {
+      if (!confirm('¿Quitar este documento adicional?')) return;
+      await apiFetch(`/api/funcionarios/${hvFolderId}/adicionales/${extraDel.getAttribute('data-extra-del')}`, { method: 'DELETE' });
+      await abrirCarpeta(hvFolderId);
+    }
+    if (contratoDel && fichaActiva()) {
+      if (!confirm('¿Quitar este contrato/otrosí?')) return;
+      await apiFetch(`/api/funcionarios/${hvFolderId}/contratos/${contratoDel.getAttribute('data-contrato-del')}`, { method: 'DELETE' });
+      await abrirCarpeta(hvFolderId);
+      cargarFuncionarios();
+    }
+  };
+  $('hvCursosTabla')?.addEventListener('click', panelClick);
+  $('hvExtrasTabla')?.addEventListener('click', panelClick);
+  $('hvContratosTabla')?.addEventListener('click', panelClick);
   $('btnHvNuevoCerrar')?.addEventListener('click', () => $('dlgHvNuevo').close());
   $('btnHvNuevoCerrarTipo')?.addEventListener('click', () => $('dlgHvNuevo').close());
   $('btnHvNuevoAtras')?.addEventListener('click', mostrarPasoTipo);
@@ -1086,6 +1446,7 @@ function setupHojasVida() {
       if ($('hvPdfNacimiento').value) fd.append('fecha_nacimiento', $('hvPdfNacimiento').value);
       if ($('hvPdfFechaDoc').value) fd.append('fecha_documento', $('hvPdfFechaDoc').value);
       if ($('hvPdfVence').value) fd.append('fecha_vencimiento', $('hvPdfVence').value);
+      if ($('hvPdfRiesgo')?.value) fd.append('riesgo_arl', $('hvPdfRiesgo').value);
       const res = await fetch(`/api/funcionarios/${hvFolderId}/documentos`, {
         method: 'POST',
         headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
