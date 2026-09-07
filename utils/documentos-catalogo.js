@@ -310,12 +310,18 @@ function fechasParaAlta(tipoDoc, body) {
   return { fecha_documento: fechaDocumento, fecha_vencimiento: fechaVencimientoIn };
 }
 
+function ordenCatalogoTipo(tipo) {
+  const idx = DOC_TYPES.findIndex((d) => d.id === tipo);
+  return idx >= 0 ? idx : DOC_TYPES.length + 50;
+}
+
 module.exports = {
   TIPOS_PERSONA,
   FORMAS_VINCULACION,
   RIESGO_ARL,
   DOC_TYPES,
   DOC_BY_ID,
+  ordenCatalogoTipo,
   tipoPersonaValido,
   formaVinculacionValida,
   riesgoArlValido,

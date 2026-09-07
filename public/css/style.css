@@ -1641,10 +1641,32 @@ body {
   background: #fff;
   border: 1px solid transparent;
   font-weight: 600;
+  align-items: center;
 }
 
 .hv-descarga-lista .hv-check:hover {
   border-color: #c5d5d1;
+}
+
+.hv-descarga-lista .hv-check.is-picked {
+  border-color: #a8c0bb;
+  background: linear-gradient(135deg, #f4f9f8 0%, #eef5f3 100%);
+}
+
+.hv-orden-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--c-dark);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .hv-descarga-lista label {

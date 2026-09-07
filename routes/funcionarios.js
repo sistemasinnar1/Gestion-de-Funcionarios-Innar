@@ -17,6 +17,7 @@ const {
   aplicaA,
   flagsDePersona,
   DOC_BY_ID,
+  ordenCatalogoTipo,
   armarChecklist,
   progresoDe,
   alertaDe,
@@ -981,10 +982,27 @@ router.post('/funcionarios/:id/descarga-pdf', requireAuth, async (req, res) => {
     if (!funcionario) return res.status(404).json({ error: 'Colaborador no encontrado' });
 
     const todos = Boolean(req.body?.todos);
-    const docIds = Array.isArray(req.body?.documentos) ? req.body.documentos.map(parseId).filter(Boolean) : [];
-    const cursoIds = Array.isArray(req.body?.cursos) ? req.body.cursos.map(parseId).filter(Boolean) : [];
-    const extraIds = Array.isArray(req.body?.adicionales) ? req.body.adicionales.map(parseId).filter(Boolean) : [];
-    const contratoIds = Array.isArray(req.body?.contratos) ? req.body.contratos.map(parseId).filter(Boolean) : [];
+    const ordenRaw = Array.isArray(req.body?.orden) ? req.body.orden : [];
+    const orden = ordenRaw
+      .map((item) => ({
+        kind: String(item?.kind || '').trim(),
+        id: parseId(item?.id)
+      }))
+      .filter((item) => item.id && ['doc', 'curso', 'extra', 'contrato'].includes(item.kind));
+
+    const idsByKind = {
+      doc: new Set(),
+      curso: new Set(),
+      extra: new Set(),
+      contrato: new Set()
+    };
+    orden.forEach((item) => idsByKind[item.kind].add(item.id));
+
+    const queryByIds = async (sql, ids) => {
+      const list = [...ids];
+      if (!list.length) return [];
+      return db.query(`${sql} AND id IN (${list.map(() => '?').join(',')})`, [id, ...list]);
+    };
 
     let docs;
     let cursos;
@@ -993,53 +1011,65 @@ router.post('/funcionarios/:id/descarga-pdf', requireAuth, async (req, res) => {
 
     if (todos) {
       docs = await db.query(
-        'SELECT archivo_path, archivo_nombre FROM documentos WHERE funcionario_id = ?',
+        'SELECT id, tipo, archivo_path, archivo_nombre, creado_en FROM documentos WHERE funcionario_id = ?',
         [id]
       );
       cursos = await db.query(
-        'SELECT archivo_path, archivo_nombre FROM cursos_certificados WHERE funcionario_id = ? AND archivo_path IS NOT NULL',
+        `SELECT id, archivo_path, archivo_nombre, fecha_certificacion, creado_en
+         FROM cursos_certificados WHERE funcionario_id = ? AND archivo_path IS NOT NULL`,
         [id]
       );
       extras = await db.query(
-        'SELECT archivo_path, archivo_nombre FROM documentos_adicionales WHERE funcionario_id = ?',
+        'SELECT id, archivo_path, archivo_nombre, creado_en FROM documentos_adicionales WHERE funcionario_id = ?',
         [id]
       );
       contratos = await db.query(
-        'SELECT archivo_path, archivo_nombre FROM contratos WHERE funcionario_id = ?',
+        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
         [id]
       );
     } else {
-      docs = docIds.length
-        ? await db.query(
-            `SELECT archivo_path, archivo_nombre FROM documentos
-             WHERE funcionario_id = ? AND id IN (${docIds.map(() => '?').join(',')})`,
-            [id, ...docIds]
-          )
-        : [];
-      cursos = cursoIds.length
-        ? await db.query(
-            `SELECT archivo_path, archivo_nombre FROM cursos_certificados
-             WHERE funcionario_id = ? AND id IN (${cursoIds.map(() => '?').join(',')})`,
-            [id, ...cursoIds]
-          )
-        : [];
-      extras = extraIds.length
-        ? await db.query(
-            `SELECT archivo_path, archivo_nombre FROM documentos_adicionales
-             WHERE funcionario_id = ? AND id IN (${extraIds.map(() => '?').join(',')})`,
-            [id, ...extraIds]
-          )
-        : [];
-      contratos = contratoIds.length
-        ? await db.query(
-            `SELECT archivo_path, archivo_nombre FROM contratos
-             WHERE funcionario_id = ? AND id IN (${contratoIds.map(() => '?').join(',')})`,
-            [id, ...contratoIds]
-          )
-        : [];
+      docs = await queryByIds(
+        'SELECT id, tipo, archivo_path, archivo_nombre, creado_en FROM documentos WHERE funcionario_id = ?',
+        idsByKind.doc
+      );
+      cursos = await queryByIds(
+        `SELECT id, archivo_path, archivo_nombre, fecha_certificacion, creado_en
+         FROM cursos_certificados WHERE funcionario_id = ? AND archivo_path IS NOT NULL`,
+        idsByKind.curso
+      );
+      extras = await queryByIds(
+        'SELECT id, archivo_path, archivo_nombre, creado_en FROM documentos_adicionales WHERE funcionario_id = ?',
+        idsByKind.extra
+      );
+      contratos = await queryByIds(
+        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
+        idsByKind.contrato
+      );
     }
 
-    const items = [...docs, ...cursos, ...extras, ...contratos]
+    const byKind = {
+      doc: Object.fromEntries(docs.map((r) => [r.id, r])),
+      curso: Object.fromEntries(cursos.map((r) => [r.id, r])),
+      extra: Object.fromEntries(extras.map((r) => [r.id, r])),
+      contrato: Object.fromEntries(contratos.map((r) => [r.id, r]))
+    };
+
+    let selected = [];
+    if (todos) {
+      selected = [
+        ...docs.map((r) => ({ kind: 'doc', row: r, rank: ordenCatalogoTipo(r.tipo), extra: r.id })),
+        ...cursos.map((r) => ({ kind: 'curso', row: r, rank: 1000, extra: r.fecha_certificacion || r.creado_en || r.id })),
+        ...extras.map((r) => ({ kind: 'extra', row: r, rank: 2000, extra: r.creado_en || r.id })),
+        ...contratos.map((r) => ({ kind: 'contrato', row: r, rank: 3000, extra: r.fecha_firma || r.creado_en || r.id }))
+      ].sort((a, b) => {
+        if (a.rank !== b.rank) return a.rank - b.rank;
+        return String(a.extra).localeCompare(String(b.extra));
+      }).map((item) => item.row);
+    } else {
+      selected = orden.map((item) => byKind[item.kind]?.[item.id]).filter(Boolean);
+    }
+
+    const items = selected
       .filter((r) => r.archivo_path)
       .map((r) => ({ path: r.archivo_path, nombre: r.archivo_nombre || r.archivo_path }));
 

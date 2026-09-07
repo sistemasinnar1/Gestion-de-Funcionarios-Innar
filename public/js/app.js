@@ -748,23 +748,60 @@ function pintarPanelesExtras(data, readOnly) {
   });
 }
 
+let hvDescargaOrden = [];
+
+function claveDescarga(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function pintarOrdenDescarga() {
+  const lista = $('hvDescargaLista');
+  if (!lista) return;
+  lista.querySelectorAll('input[type="checkbox"][data-kind]').forEach((cb) => {
+    const label = cb.closest('.hv-check');
+    if (!label) return;
+    let badge = label.querySelector('.hv-orden-badge');
+    const idx = hvDescargaOrden.findIndex((item) => item.kind === cb.getAttribute('data-kind') && String(item.id) === String(cb.value));
+    if (idx < 0) {
+      badge?.remove();
+      label.classList.remove('is-picked');
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'hv-orden-badge';
+      label.appendChild(badge);
+    }
+    badge.textContent = String(idx + 1);
+    label.classList.add('is-picked');
+  });
+}
+
+function marcarOrdenDescarga(kind, id, checked) {
+  const key = claveDescarga(kind, id);
+  hvDescargaOrden = hvDescargaOrden.filter((item) => claveDescarga(item.kind, item.id) !== key);
+  if (checked) hvDescargaOrden.push({ kind, id });
+  pintarOrdenDescarga();
+}
+
 function abrirDialogoDescarga() {
   const lista = $('hvDescargaLista');
   if (!lista || !hvFolderData) return;
+  hvDescargaOrden = [];
   const bits = [];
   (hvFolderData.requisitos || []).forEach((req) => {
     (req.archivos || []).forEach((a) => {
-      bits.push(`<label class="hv-check"><input type="checkbox" name="doc" value="${a.id}"/><span class="hv-check-text">${escapeHtml(req.label)} — ${escapeHtml(a.nombre)}</span></label>`);
+      bits.push(`<label class="hv-check"><input type="checkbox" data-kind="doc" name="doc" value="${a.id}"/><span class="hv-check-text">${escapeHtml(req.label)} — ${escapeHtml(a.nombre)}</span></label>`);
     });
   });
   (hvFolderData.cursos || []).forEach((c) => {
-    bits.push(`<label class="hv-check"><input type="checkbox" name="curso" value="${c.id}"/><span class="hv-check-text">Curso: ${escapeHtml(c.nombre)}</span></label>`);
+    bits.push(`<label class="hv-check"><input type="checkbox" data-kind="curso" name="curso" value="${c.id}"/><span class="hv-check-text">Curso: ${escapeHtml(c.nombre)}</span></label>`);
   });
   (hvFolderData.adicionales || []).forEach((c) => {
-    bits.push(`<label class="hv-check"><input type="checkbox" name="extra" value="${c.id}"/><span class="hv-check-text">Extra: ${escapeHtml(c.descripcion)}</span></label>`);
+    bits.push(`<label class="hv-check"><input type="checkbox" data-kind="extra" name="extra" value="${c.id}"/><span class="hv-check-text">Extra: ${escapeHtml(c.descripcion)}</span></label>`);
   });
   (hvFolderData.contratos || []).forEach((c) => {
-    bits.push(`<label class="hv-check"><input type="checkbox" name="contrato" value="${c.id}"/><span class="hv-check-text">${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}: ${escapeHtml(c.descripcion || c.archivo_nombre || '')}</span></label>`);
+    bits.push(`<label class="hv-check"><input type="checkbox" data-kind="contrato" name="contrato" value="${c.id}"/><span class="hv-check-text">${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}: ${escapeHtml(c.descripcion || c.archivo_nombre || '')}</span></label>`);
   });
   lista.innerHTML = bits.length ? bits.join('') : '<p class="hv-empty-table">No hay archivos para descargar.</p>';
   if ($('hvDescargaTodos')) $('hvDescargaTodos').checked = false;
@@ -1193,25 +1230,27 @@ function setupHojasVida() {
   });
   $('btnHvDescargar')?.addEventListener('click', abrirDialogoDescarga);
   $('btnHvDescargaCerrar')?.addEventListener('click', () => $('dlgHvDescarga')?.close());
+  $('hvDescargaLista')?.addEventListener('change', (e) => {
+    const cb = e.target?.closest?.('input[type="checkbox"][data-kind]');
+    if (!cb || $('hvDescargaTodos')?.checked) return;
+    marcarOrdenDescarga(cb.getAttribute('data-kind'), Number(cb.value), cb.checked);
+  });
   $('hvDescargaTodos')?.addEventListener('change', (e) => {
-    $('hvDescargaLista')?.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      cb.checked = e.target.checked;
-      cb.disabled = e.target.checked;
+    const marcarTodo = e.target.checked;
+    hvDescargaOrden = [];
+    $('hvDescargaLista')?.querySelectorAll('input[type="checkbox"][data-kind]').forEach((cb) => {
+      cb.checked = marcarTodo;
+      cb.disabled = marcarTodo;
     });
+    pintarOrdenDescarga();
   });
   $('formHvDescarga')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!hvFolderId) return;
     setError('hvDescargaError', '');
     const todos = Boolean($('hvDescargaTodos')?.checked);
-    const body = {
-      todos,
-      documentos: [...document.querySelectorAll('#hvDescargaLista input[name="doc"]:checked')].map((el) => Number(el.value)),
-      cursos: [...document.querySelectorAll('#hvDescargaLista input[name="curso"]:checked')].map((el) => Number(el.value)),
-      adicionales: [...document.querySelectorAll('#hvDescargaLista input[name="extra"]:checked')].map((el) => Number(el.value)),
-      contratos: [...document.querySelectorAll('#hvDescargaLista input[name="contrato"]:checked')].map((el) => Number(el.value))
-    };
-    if (!todos && !body.documentos.length && !body.cursos.length && !body.adicionales.length && !body.contratos.length) {
+    const body = { todos, orden: hvDescargaOrden };
+    if (!todos && !body.orden.length) {
       setError('hvDescargaError', 'Selecciona al menos un archivo');
       return;
     }
