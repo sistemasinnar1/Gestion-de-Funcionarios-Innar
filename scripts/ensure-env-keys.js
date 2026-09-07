@@ -13,7 +13,8 @@ const extras = [
   ['SMTP_SECURE', 'true'],
   ['SMTP_USER', ''],
   ['SMTP_PASS', ''],
-  ['SMTP_FROM', '']
+  ['SMTP_FROM', ''],
+  ['BACKUP_KEEP_MONTHS', '12']
 ];
 
 const lines = [];

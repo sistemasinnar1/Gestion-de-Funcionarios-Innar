@@ -240,6 +240,68 @@ async function initializeDatabase() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS org_tareas (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      padre_id INT NULL,
+      titulo VARCHAR(220) NOT NULL,
+      detalle TEXT NULL,
+      tematica VARCHAR(40) NOT NULL DEFAULT 'otro',
+      urgencia TINYINT NOT NULL DEFAULT 2,
+      importancia TINYINT NOT NULL DEFAULT 2,
+      fecha_cumplimiento DATE NULL,
+      requiere_prueba TINYINT(1) NOT NULL DEFAULT 0,
+      recordar_tarde TINYINT(1) NOT NULL DEFAULT 0,
+      estado ENUM('pendiente', 'completada') NOT NULL DEFAULT 'pendiente',
+      completada_en DATETIME NULL,
+      completada_por INT NULL,
+      justificacion TEXT NULL,
+      prueba_nombre VARCHAR(255) NULL,
+      prueba_path VARCHAR(500) NULL,
+      creado_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_org_tarea_estado (estado, fecha_cumplimiento),
+      INDEX idx_org_tarea_tema (tematica),
+      INDEX idx_org_tarea_padre (padre_id),
+      CONSTRAINT fk_org_tarea_padre
+        FOREIGN KEY (padre_id) REFERENCES org_tareas(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS org_agenda (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      titulo VARCHAR(220) NOT NULL,
+      tipo VARCHAR(40) NOT NULL DEFAULT 'otro',
+      detalle TEXT NULL,
+      ubicacion VARCHAR(180) NULL,
+      fecha DATE NOT NULL,
+      periodicidad ENUM('ninguna', 'semanal', 'mensual', 'trimestral', 'anual')
+        NOT NULL DEFAULT 'ninguna',
+      alerta_dias INT NOT NULL DEFAULT 30,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      creado_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_org_agenda_fecha (fecha, activo),
+      INDEX idx_org_agenda_tipo (tipo)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS org_agenda_obs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      agenda_id INT NOT NULL,
+      texto TEXT NOT NULL,
+      creado_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_org_obs_agenda (agenda_id),
+      CONSTRAINT fk_org_obs_agenda
+        FOREIGN KEY (agenda_id) REFERENCES org_agenda(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
   const multipleTipos = DOC_TYPES.filter((d) => d.multiple).map((d) => d.id);
   const ph = multipleTipos.map(() => '?').join(',') || "''";
   const [sobrantes] = await conn.query(

@@ -24,6 +24,10 @@ function fotosDir() {
   return path.join(uploadsRoot(), 'fotos');
 }
 
+function organizadorDir() {
+  return path.join(uploadsRoot(), 'organizador');
+}
+
 function espejoRoot() {
   return path.join(backupsRoot(), 'espejo');
 }
@@ -31,8 +35,10 @@ function espejoRoot() {
 function ensureDirs() {
   fs.mkdirSync(documentosDir(), { recursive: true });
   fs.mkdirSync(fotosDir(), { recursive: true });
+  fs.mkdirSync(organizadorDir(), { recursive: true });
   fs.mkdirSync(path.join(espejoRoot(), 'documentos'), { recursive: true });
   fs.mkdirSync(path.join(espejoRoot(), 'fotos'), { recursive: true });
+  fs.mkdirSync(path.join(espejoRoot(), 'organizador'), { recursive: true });
 }
 
 function dentroDe(root, abs) {
@@ -111,6 +117,7 @@ module.exports = {
   backupsRoot,
   documentosDir,
   fotosDir,
+  organizadorDir,
   espejoRoot,
   ensureDirs,
   absArchivo,

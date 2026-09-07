@@ -84,14 +84,20 @@
     <main class="home-content">
       <div class="home-intro">
         <h2>¿Qué necesitas hoy?</h2>
-        <p>Revisa alertas y entra al banco de hojas de vida.</p>
+        <p>Revisa alertas, el banco de hojas de vida y el organizador de tareas.</p>
       </div>
       <div id="homeAlertas" class="hv-alertas" hidden></div>
+      <div id="homeOrgAlertas" class="hv-alertas" hidden></div>
       <div class="module-grid">
         <button type="button" class="module-card module-card-btn" id="btnModuloHv" data-module="hv">
           <span class="module-icon" aria-hidden="true">BH</span>
           <h3>Banco de hojas de vida</h3>
           <p>Una carpeta por colaborador, con los requisitos según el tipo de vinculación.</p>
+        </button>
+        <button type="button" class="module-card module-card-btn" id="btnModuloOrg" data-module="org">
+          <span class="module-icon" aria-hidden="true">OT</span>
+          <h3>Organizador de tareas y cronograma</h3>
+          <p>Pendientes por urgencia e importancia, y la agenda de calidad de la IPS.</p>
         </button>
       </div>
     </main>
@@ -232,6 +238,73 @@
           <button type="button" id="btnHvContratoNuevo" class="btn-soft">Agregar contrato / otrosí</button>
         </div>
         <div id="hvContratosTabla" class="hv-table-wrap"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="view-org" class="view-home hidden">
+    <header class="menu-header">
+      <div class="header-brand">
+        <button type="button" class="btn-back" id="btnOrgVolver">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"/></svg>
+          Volver
+        </button>
+        <img src="/images/logo-innar-blanco.png" alt="INNAR" class="menu-logo" width="640" height="180"/>
+        <div>
+          <strong>Organizador</strong>
+          <span>Tareas y cronograma</span>
+        </div>
+      </div>
+      <div class="menu-user">
+        <span class="js-user-name"></span>
+        <button type="button" class="btn-logout js-logout">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 6H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4M15 16l5-4-5-4M20 12H9"/></svg>
+          Cerrar sesión
+        </button>
+      </div>
+    </header>
+    <main class="home-content hv-content">
+      <div class="org-tabs" role="tablist">
+        <button type="button" class="org-tab is-on" data-org-tab="pendientes">Pendientes</button>
+        <button type="button" class="org-tab" data-org-tab="agenda">Cronograma</button>
+        <button type="button" class="org-tab" data-org-tab="archivo">Trazabilidad</button>
+      </div>
+
+      <section id="orgPanelPendientes">
+        <div class="hv-toolbar">
+          <select id="orgFiltroTema">
+            <option value="">Todas las temáticas</option>
+          </select>
+          <select id="orgFiltroOrden">
+            <option value="eisenhower">Urgencia e importancia</option>
+            <option value="fecha">Fecha de cumplimiento</option>
+          </select>
+          <button type="button" id="btnOrgTareaNueva" class="btn-action">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+            Nueva tarea
+          </button>
+        </div>
+        <p class="hv-slots-sub">Las más urgentes e importantes van primero. Completadas salen de esta lista y quedan en trazabilidad.</p>
+        <div id="orgError" class="login-error hidden"></div>
+        <div id="orgMatriz" class="org-matriz"></div>
+      </section>
+
+      <section id="orgPanelAgenda" class="hidden">
+        <div class="hv-toolbar">
+          <select id="orgFiltroAgendaTipo">
+            <option value="">Todos los tipos</option>
+          </select>
+          <button type="button" id="btnOrgEventoNuevo" class="btn-action">Nuevo evento</button>
+        </div>
+        <p class="hv-slots-sub">Mantenimientos, comités, impuestos, extintores, informes, nómina y PILA. Los vencimientos del personal aparecen desde el banco, sin volver a digitarlos.</p>
+        <div id="orgAgendaError" class="login-error hidden"></div>
+        <div id="orgCalendario" class="org-cal"></div>
+        <div id="orgAgendaLista" class="org-agenda-lista"></div>
+      </section>
+
+      <section id="orgPanelArchivo" class="hidden">
+        <p class="hv-slots-sub">Tareas ya cerradas, con fecha y hora, justificación o prueba cuando se pidió.</p>
+        <div id="orgArchivoLista" class="org-archivo"></div>
       </section>
     </main>
   </div>
@@ -494,10 +567,152 @@
     </form>
   </dialog>
 
+  <dialog id="dlgOrgTarea" class="hv-dialog">
+    <form id="formOrgTarea" class="login-form">
+      <h3 id="orgTareaTituloDlg">Nueva tarea</h3>
+      <input type="hidden" id="orgTareaId" />
+      <input type="hidden" id="orgTareaPadre" />
+      <div class="form-group">
+        <label for="orgTareaNombre">Título</label>
+        <input id="orgTareaNombre" required maxlength="220" />
+      </div>
+      <div class="form-group">
+        <label for="orgTareaDetalle">Detalle (opcional)</label>
+        <textarea id="orgTareaDetalle" rows="3" maxlength="4000"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="orgTareaTema">Temática</label>
+        <select id="orgTareaTema" required></select>
+      </div>
+      <div class="org-form-grid">
+        <div class="form-group">
+          <label for="orgTareaUrgencia">Urgencia</label>
+          <select id="orgTareaUrgencia">
+            <option value="1">Baja</option>
+            <option value="2" selected>Media</option>
+            <option value="3">Alta</option>
+            <option value="4">Crítica</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="orgTareaImportancia">Importancia</label>
+          <select id="orgTareaImportancia">
+            <option value="1">Baja</option>
+            <option value="2" selected>Media</option>
+            <option value="3">Alta</option>
+            <option value="4">Esencial</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="orgTareaFecha">Fecha de cumplimiento (opcional)</label>
+        <input id="orgTareaFecha" type="date" />
+        <p class="field-hint">Si no tiene fecha, vive en la lista de pendientes hasta que la completes.</p>
+      </div>
+      <div class="hv-flags" id="orgTareaFlags">
+        <label class="hv-flag" for="orgTareaPrueba">
+          <input type="checkbox" id="orgTareaPrueba" />
+          <span class="hv-flag-box" aria-hidden="true"></span>
+          <span class="hv-flag-text">
+            <span class="hv-flag-name">Pedir prueba al completar</span>
+            <span class="hv-flag-desc">Archivo o descripción de cómo se hizo</span>
+          </span>
+        </label>
+        <label class="hv-flag" for="orgTareaTarde" id="orgTareaTardeWrap">
+          <input type="checkbox" id="orgTareaTarde" />
+          <span class="hv-flag-box" aria-hidden="true"></span>
+          <span class="hv-flag-text">
+            <span class="hv-flag-name">Recordar al mediodía</span>
+            <span class="hv-flag-desc">Correo a las 12:00 (hora Colombia) si sigue pendiente</span>
+          </span>
+        </label>
+      </div>
+      <div id="orgTareaError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnOrgTareaCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgOrgCompletar" class="hv-dialog">
+    <form id="formOrgCompletar" class="login-form">
+      <h3>Completar tarea</h3>
+      <p id="orgCompletarLead" class="panel-lead"></p>
+      <input type="hidden" id="orgCompletarId" />
+      <div class="form-group">
+        <label for="orgCompletarTexto">Cómo se completó</label>
+        <textarea id="orgCompletarTexto" rows="3" maxlength="4000" placeholder="Describe lo realizado"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="orgCompletarArchivo">Prueba (PDF, JPG o PNG)</label>
+        <input id="orgCompletarArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" />
+      </div>
+      <p id="orgCompletarHint" class="field-hint"></p>
+      <div id="orgCompletarError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Marcar completada</button>
+      <button type="button" id="btnOrgCompletarCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgOrgAgenda" class="hv-dialog">
+    <form id="formOrgAgenda" class="login-form">
+      <h3 id="orgAgendaTituloDlg">Nuevo evento</h3>
+      <input type="hidden" id="orgAgendaId" />
+      <div class="form-group">
+        <label for="orgAgendaNombre">Título</label>
+        <input id="orgAgendaNombre" required maxlength="220" />
+      </div>
+      <div class="form-group">
+        <label for="orgAgendaTipo">Tipo</label>
+        <select id="orgAgendaTipo" required></select>
+      </div>
+      <div class="form-group">
+        <label for="orgAgendaUbicacion">Equipo / lugar (opcional)</label>
+        <input id="orgAgendaUbicacion" maxlength="180" placeholder="Ej. ascensor, UPS, sala de juntas" />
+      </div>
+      <div class="form-group">
+        <label for="orgAgendaDetalle">Detalle</label>
+        <textarea id="orgAgendaDetalle" rows="2" maxlength="4000"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="orgAgendaFecha">Fecha</label>
+        <input id="orgAgendaFecha" type="date" required />
+      </div>
+      <div class="org-form-grid">
+        <div class="form-group">
+          <label for="orgAgendaPeriodo">Periodicidad</label>
+          <select id="orgAgendaPeriodo"></select>
+        </div>
+        <div class="form-group">
+          <label for="orgAgendaAlerta">Avisar (días antes)</label>
+          <input id="orgAgendaAlerta" type="number" min="0" max="365" value="30" />
+        </div>
+      </div>
+      <div id="orgAgendaFormError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnOrgAgendaCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgOrgObs" class="hv-dialog">
+    <form id="formOrgObs" class="login-form">
+      <h3>Observación</h3>
+      <p class="field-hint">Queda registrada con la fecha y hora de hoy.</p>
+      <input type="hidden" id="orgObsAgendaId" />
+      <div class="form-group">
+        <label for="orgObsTexto">Texto</label>
+        <textarea id="orgObsTexto" rows="4" required maxlength="4000"></textarea>
+      </div>
+      <div id="orgObsError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnOrgObsCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
   <div id="hvPrintSheet" class="hv-print-sheet" hidden></div>
 
   <input id="hvFotoArchivo" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
 
   <script src="/js/app.js" defer></script>
+  <script src="/js/organizador.js" defer></script>
 </body>
 </html>

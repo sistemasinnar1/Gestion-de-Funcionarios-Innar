@@ -2,7 +2,8 @@ const db = require('./db-mysql');
 const logger = require('./logger');
 const mailer = require('./mailer');
 const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, daysUntil, estadoFecha } = require('./documentos-catalogo');
-const { auditarArchivos } = require('./respaldo');
+const { eventosDesdeBanco } = require('./organizador-banco');
+const { enriquecerEvento, TEMATICAS } = require('./organizador-catalogo');
 
 const JOB_KEY = 'alertas_digest_dia';
 
@@ -54,7 +55,7 @@ async function destinatarios() {
   const rows = await db.query(
     `SELECT email, nombre FROM usuarios
      WHERE activo = 1 AND email IS NOT NULL AND email <> ''
-       AND rol IN ('superadmin', 'admin', 'talento_humano')`
+       AND rol IN ('superadmin', 'admin', 'talento_humano', 'calidad')`
   );
   const list = [];
   const seen = new Set();
@@ -79,7 +80,46 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+async function recogerAlertasOrganizador() {
+  const vacio = { tareasVencidas: [], tareasHoy: [], agenda: [] };
+  try {
+    const pendientes = await db.query(
+      `SELECT titulo, fecha_cumplimiento, tematica
+       FROM org_tareas
+       WHERE estado = 'pendiente' AND padre_id IS NULL`
+    );
+    const hoy = hoyIso();
+    const tareasVencidas = [];
+    const tareasHoy = [];
+    pendientes.forEach((t) => {
+      const fecha = String(t.fecha_cumplimiento || '').slice(0, 10);
+      const row = {
+        titulo: t.titulo,
+        tematica: TEMATICAS[t.tematica] || t.tematica,
+        vence: formatFecha(fecha)
+      };
+      if (fecha && fecha < hoy) tareasVencidas.push(row);
+      else if (fecha === hoy) tareasHoy.push(row);
+    });
+    const eventos = await db.query('SELECT * FROM org_agenda WHERE activo = 1');
+    const agenda = [
+      ...eventos.map((e) => enriquecerEvento(e)),
+      ...(await eventosDesdeBanco())
+    ].filter((e) => e.fecha_estado === 'vencido' || e.fecha_estado === 'por_vencer')
+      .map((e) => ({
+        titulo: e.titulo,
+        tipo: e.tipo_label,
+        vence: formatFecha(e.fecha),
+        estado: e.fecha_estado
+      }));
+    return { tareasVencidas, tareasHoy, agenda };
+  } catch (_) {
+    return vacio;
+  }
+}
+
 async function recogerAlertas() {
+  const org = await recogerAlertasOrganizador();
   const personas = await db.query(
     `SELECT id, nombres, apellidos, documento, fecha_nacimiento, tipo_persona,
             electrodiagnostico, exige_telemedicina, proximo_examen_medico
@@ -94,6 +134,9 @@ async function recogerAlertas() {
       incompletos: 0,
       examen: [],
       contratos: [],
+      tareasVencidas: org.tareasVencidas,
+      tareasHoy: org.tareasHoy,
+      agendaOrg: org.agenda,
       archivosFaltantes: await auditarArchivos()
     };
   }
@@ -183,6 +226,9 @@ async function recogerAlertas() {
     incompletos,
     examen,
     contratos,
+    tareasVencidas: org.tareasVencidas,
+    tareasHoy: org.tareasHoy,
+    agendaOrg: org.agenda,
     archivosFaltantes: await auditarArchivos()
   };
 }
@@ -196,8 +242,12 @@ function armarMensaje(data) {
   const nArchivos = (data.archivosFaltantes || []).length;
   const examen = data.examen || [];
   const contratos = data.contratos || [];
+  const tareasVencidas = data.tareasVencidas || [];
+  const tareasHoy = data.tareasHoy || [];
+  const agendaOrg = data.agendaOrg || [];
   const nAlertas = data.vencidos.length + data.porVencer.length + data.cumpleanos.length
-    + nArchivos + examen.length + contratos.length;
+    + nArchivos + examen.length + contratos.length
+    + tareasVencidas.length + tareasHoy.length + agendaOrg.length;
   const subject = nArchivos
     ? `INNAR Gestión — ${nArchivos} archivo(s) faltan en disco`
     : (nAlertas
@@ -218,6 +268,15 @@ function armarMensaje(data) {
     '',
     `Contratos / otrosíes (${contratos.length}, aviso ${CONTRATO_ALERTA_DIAS} días):`,
     ...contratos.map((r) => `- ${r.persona}: ${r.requisito} ${r.estado} (${r.vence})`),
+    '',
+    `Tareas vencidas (${tareasVencidas.length}):`,
+    ...tareasVencidas.map((r) => `- ${r.titulo} [${r.tematica}] (${r.vence})`),
+    '',
+    `Tareas para hoy (${tareasHoy.length}):`,
+    ...tareasHoy.map((r) => `- ${r.titulo} [${r.tematica}]`),
+    '',
+    `Agenda de calidad (${agendaOrg.length}):`,
+    ...agendaOrg.map((r) => `- ${r.titulo} — ${r.tipo} ${r.estado} (${r.vence})`),
     '',
     `Cumpleaños esta semana (${data.cumpleanos.length}):`,
     ...data.cumpleanos.map((r) => `- ${r.persona} (${r.cuando})`),
@@ -255,6 +314,12 @@ function armarMensaje(data) {
             ${listaHtml(examen, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#1d4ed8;">Contratos / otrosíes (${contratos.length})</p>
             ${listaHtml(contratos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
+            <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Tareas vencidas (${tareasVencidas.length})</p>
+            ${listaHtml(tareasVencidas, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tematica)} (${escapeHtml(r.vence)})`)}
+            <p style="margin:18px 0 8px;font-weight:800;color:#b45309;">Tareas para hoy (${tareasHoy.length})</p>
+            ${listaHtml(tareasHoy, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tematica)}`)}
+            <p style="margin:18px 0 8px;font-weight:800;color:#0f766e;">Agenda de calidad (${agendaOrg.length})</p>
+            ${listaHtml(agendaOrg, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tipo)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#5b21b6;">Cumpleaños esta semana (${data.cumpleanos.length})</p>
             ${listaHtml(data.cumpleanos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.cuando)}`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Archivos faltantes en disco (${nArchivos})</p>
@@ -288,7 +353,10 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
     if (!data.vencidos.length && !data.porVencer.length && !data.cumpleanos.length
       && !(data.archivosFaltantes || []).length
       && !(data.examen || []).length
-      && !(data.contratos || []).length) {
+      && !(data.contratos || []).length
+      && !(data.tareasVencidas || []).length
+      && !(data.tareasHoy || []).length
+      && !(data.agendaOrg || []).length) {
       await marcarEnviadoHoy();
       return { ok: true, skipped: true, reason: 'sin_alertas' };
     }
@@ -320,15 +388,81 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
   }
 }
 
+function horaEnBogota() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    hour: 'numeric',
+    hour12: false
+  }).formatToParts(new Date());
+  return Number(parts.find((p) => p.type === 'hour')?.value);
+}
+
+async function enviarRecordatorioTarde({ forzar = false } = {}) {
+  if (!mailer.isConfigured()) return { ok: false, reason: 'smtp_no_configurado' };
+  const hora = Number(process.env.ORG_HORA_TARDE || 12);
+  if (!forzar && horaEnBogota() !== hora) {
+    return { ok: true, skipped: true, reason: 'fuera_de_hora' };
+  }
+  try {
+    const row = await db.queryOne('SELECT valor FROM jobs_estado WHERE clave = ?', ['org_recordatorio_tarde']);
+    if (!forzar && row?.valor === hoyIso()) {
+      return { ok: true, skipped: true, reason: 'ya_enviado_hoy' };
+    }
+    const tareas = await db.query(
+      `SELECT titulo, tematica, fecha_cumplimiento
+       FROM org_tareas
+       WHERE estado = 'pendiente' AND padre_id IS NULL AND recordar_tarde = 1
+       ORDER BY urgencia DESC, importancia DESC`
+    );
+    if (!tareas.length) return { ok: true, skipped: true, reason: 'sin_tareas' };
+    const destinos = await destinatarios();
+    if (!destinos.length) return { ok: false, reason: 'sin_destinatarios' };
+    const text = [
+      'Recordatorio de la tarde — INNAR Gestión',
+      '',
+      'Estas tareas siguen pendientes para esta tarde:',
+      ...tareas.map((t) => `- ${t.titulo}${t.fecha_cumplimiento ? ` (fecha ${formatFecha(t.fecha_cumplimiento)})` : ''}`)
+    ].join('\n');
+    const html = `<p>Estas tareas siguen pendientes para esta tarde:</p><ul>${
+      tareas.map((t) => `<li><strong>${escapeHtml(t.titulo)}</strong></li>`).join('')
+    }</ul>`;
+    let enviados = 0;
+    for (const dest of destinos) {
+      const result = await mailer.sendMail({
+        to: dest.email,
+        subject: `INNAR Gestión — ${tareas.length} pendiente(s) para esta tarde`,
+        text,
+        html
+      });
+      if (result.sent) enviados += 1;
+    }
+    if (enviados > 0) {
+      await db.execute(
+        `INSERT INTO jobs_estado (clave, valor) VALUES ('org_recordatorio_tarde', ?)
+         ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
+        [hoyIso()]
+      );
+    }
+    return { ok: enviados > 0, enviados };
+  } catch (err) {
+    logger.error('[ALERTAS] Recordatorio de tarde falló', { message: err.message });
+    return { ok: false, error: err.message };
+  }
+}
+
 function iniciarAlertasCorreo() {
   const delay = Number(process.env.ALERTAS_DELAY_MS || 45000);
   const every = Number(process.env.ALERTAS_INTERVAL_MS || 6 * 60 * 60 * 1000);
   setTimeout(() => {
     enviarDigestAlertas().catch(() => {});
+    enviarRecordatorioTarde().catch(() => {});
   }, delay);
   setInterval(() => {
     enviarDigestAlertas().catch(() => {});
   }, every);
+  setInterval(() => {
+    enviarRecordatorioTarde().catch(() => {});
+  }, 15 * 60 * 1000);
 }
 
-module.exports = { enviarDigestAlertas, iniciarAlertasCorreo, recogerAlertas };
+module.exports = { enviarDigestAlertas, iniciarAlertasCorreo, recogerAlertas, enviarRecordatorioTarde };

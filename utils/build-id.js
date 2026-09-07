@@ -16,7 +16,10 @@ const WATCHED = [
   'utils/mailer.js',
   'utils/storage.js',
   'utils/respaldo.js',
-  'utils/pdf-pack.js'
+  'utils/pdf-pack.js',
+  'utils/organizador-catalogo.js',
+  'routes/organizador.js',
+  'public/js/organizador.js'
 ];
 
 function getBuildId() {

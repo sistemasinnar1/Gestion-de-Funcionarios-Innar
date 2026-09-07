@@ -27,6 +27,7 @@ const { applySecurity } = require('./config/security');
 const { applyRateLimiters } = require('./config/rate-limit');
 const authRoutes = require('./routes/auth');
 const funcionariosRoutes = require('./routes/funcionarios');
+const organizadorRoutes = require('./routes/organizador');
 const { iniciarAlertasCorreo } = require('./utils/alertas-correo');
 const { iniciarRespaldo } = require('./utils/respaldo');
 const storage = require('./utils/storage');
@@ -51,7 +52,8 @@ function sendIndex(_req, res) {
   html = html
     .replace('content="dev"', `content="${version}"`)
     .replace('/css/style.css"', `/css/style.css?v=${version}"`)
-    .replace('/js/app.js"', `/js/app.js?v=${version}"`);
+    .replace('/js/app.js"', `/js/app.js?v=${version}"`)
+    .replace('/js/organizador.js"', `/js/organizador.js?v=${version}"`);;
   res.type('html').send(html);
 }
 
@@ -102,6 +104,7 @@ function createApp() {
 
   app.use('/api', authRoutes);
   app.use('/api', funcionariosRoutes);
+  app.use('/api', organizadorRoutes);
 
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();

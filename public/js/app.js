@@ -5,7 +5,7 @@ let csrfToken = '';
 let pendingEmail = '';
 
 function showView(id) {
-  ['view-login', 'view-home', 'view-hv', 'view-hv-folder'].forEach((viewId) => {
+  ['view-login', 'view-home', 'view-hv', 'view-hv-folder', 'view-org'].forEach((viewId) => {
     const el = $(viewId);
     if (el) el.classList.toggle('hidden', viewId !== id);
   });
@@ -146,6 +146,7 @@ async function verificarCodigo(email, codigo) {
       applyUser(data.usuario);
       showView('view-home');
       history.pushState({ view: 'home' }, '', '#home');
+      if (typeof window.pintarHomeOrg === 'function') window.pintarHomeOrg();
       return true;
     }
     let extra = data.error || 'No se pudo validar la contraseña temporal';
@@ -864,8 +865,13 @@ function aplicarRutaAutenticado() {
     abrirHv();
     return;
   }
+  if (hash === '#org' || hash.startsWith('#org/')) {
+    if (typeof window.abrirOrganizador === 'function') window.abrirOrganizador(hash);
+    return;
+  }
   showView('view-home');
   cargarFuncionarios();
+  if (typeof window.pintarHomeOrg === 'function') window.pintarHomeOrg();
 }
 
 function asignarArchivo(input, file) {
@@ -1059,6 +1065,7 @@ function setupHojasVida() {
     } else {
       pintarAlertas('homeAlertas');
     }
+    if (typeof window.pintarHomeOrg === 'function') window.pintarHomeOrg();
   });
   $('btnHvFolderVolver')?.addEventListener('click', abrirHv);
   $('hvBuscar')?.addEventListener('input', () => {
@@ -1568,8 +1575,18 @@ function setupUpdateCheck() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  window.innarApp = {
+    $,
+    apiFetch,
+    escapeHtml,
+    formatFecha,
+    showView,
+    setError,
+    csrf: () => csrfToken
+  };
   setupForms();
   setupHojasVida();
+  if (typeof window.setupOrganizador === 'function') window.setupOrganizador();
   setupUpdateCheck();
   $('btnLogout')?.addEventListener('click', doLogout);
   document.querySelectorAll('.js-logout').forEach((btn) => btn.addEventListener('click', doLogout));

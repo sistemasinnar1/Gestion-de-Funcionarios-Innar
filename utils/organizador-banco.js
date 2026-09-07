@@ -1,0 +1,126 @@
+const db = require('./db-mysql');
+const { fechaIso, estadoFecha, CONTRATO_ALERTA_DIAS, ALERTA_DIAS } = require('./documentos-catalogo');
+
+function nombreDe(row) {
+  return `${row.nombres || ''} ${row.apellidos || ''}`.trim();
+}
+
+async function eventosDesdeBanco() {
+  const items = [];
+  try {
+    const personas = await db.query(
+      `SELECT id, nombres, apellidos, fecha_nacimiento, proximo_examen_medico
+       FROM funcionarios WHERE activo = 1`
+    );
+    personas.forEach((p) => {
+      const nombre = nombreDe(p);
+      if (p.proximo_examen_medico) {
+        const fecha = fechaIso(p.proximo_examen_medico);
+        items.push({
+          id: `banco-examen-${p.id}`,
+          fuente: 'banco',
+          tipo: 'otro',
+          tipo_label: 'Examen médico ocupacional',
+          titulo: `Examen periódico — ${nombre}`,
+          detalle: 'Viene del banco de hojas de vida',
+          fecha,
+          periodicidad: 'ninguna',
+          alerta_dias: ALERTA_DIAS,
+          fecha_estado: estadoFecha(fecha, ALERTA_DIAS),
+          editable: false
+        });
+      }
+      const nac = fechaIso(p.fecha_nacimiento);
+      if (nac) {
+        const parts = nac.split('-');
+        const now = new Date();
+        let next = new Date(now.getFullYear(), Number(parts[1]) - 1, Number(parts[2]));
+        if (next < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+          next = new Date(now.getFullYear() + 1, Number(parts[1]) - 1, Number(parts[2]));
+        }
+        const y = next.getFullYear();
+        const m = String(next.getMonth() + 1).padStart(2, '0');
+        const d = String(next.getDate()).padStart(2, '0');
+        const fecha = `${y}-${m}-${d}`;
+        const days = Math.round((next - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+        if (days >= 0 && days <= 14) {
+          items.push({
+            id: `banco-cumple-${p.id}`,
+            fuente: 'banco',
+            tipo: 'otro',
+            tipo_label: 'Cumpleaños',
+            titulo: `Cumpleaños — ${nombre}`,
+            detalle: 'Viene del banco de hojas de vida',
+            fecha,
+            periodicidad: 'anual',
+            alerta_dias: 7,
+            fecha_estado: estadoFecha(fecha, 7),
+            editable: false
+          });
+        }
+      }
+    });
+
+    const contratos = await db.query(
+      `SELECT c.id, c.tipo, c.descripcion, c.fecha_terminacion, f.nombres, f.apellidos
+       FROM contratos c
+       INNER JOIN funcionarios f ON f.id = c.funcionario_id
+       WHERE f.activo = 1 AND c.fecha_terminacion IS NOT NULL`
+    );
+    contratos.forEach((c) => {
+      const fecha = fechaIso(c.fecha_terminacion);
+      const st = estadoFecha(fecha, CONTRATO_ALERTA_DIAS);
+      if (st !== 'vencido' && st !== 'por_vencer') return;
+      items.push({
+        id: `banco-contrato-${c.id}`,
+        fuente: 'banco',
+        tipo: 'otro',
+        tipo_label: c.tipo === 'otrosi' ? 'Otrosí laboral' : 'Contrato laboral',
+        titulo: `${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'} — ${nombreDe(c)}`,
+        detalle: c.descripcion || 'Viene del banco de hojas de vida',
+        fecha,
+        periodicidad: 'ninguna',
+        alerta_dias: CONTRATO_ALERTA_DIAS,
+        fecha_estado: st,
+        editable: false
+      });
+    });
+
+    const docs = await db.query(
+      `SELECT d.id, d.tipo, d.fecha_vencimiento, d.archivo_nombre, f.nombres, f.apellidos
+       FROM documentos d
+       INNER JOIN funcionarios f ON f.id = d.funcionario_id
+       WHERE f.activo = 1 AND d.fecha_vencimiento IS NOT NULL`
+    );
+    docs.forEach((d) => {
+      const fecha = fechaIso(d.fecha_vencimiento);
+      const st = estadoFecha(fecha, ALERTA_DIAS);
+      if (st !== 'vencido' && st !== 'por_vencer') return;
+      const labels = {
+        poliza_rc: 'Póliza de responsabilidad civil',
+        curso_violencia_sexual: 'Curso de violencia sexual',
+        curso_soporte_vital: 'Soporte vital',
+        curso_duelo: 'Gestión de duelo',
+        curso_telemedicina: 'Telemedicina'
+      };
+      items.push({
+        id: `banco-doc-${d.id}`,
+        fuente: 'banco',
+        tipo: 'otro',
+        tipo_label: labels[d.tipo] || 'Documento del personal',
+        titulo: `${labels[d.tipo] || d.tipo} — ${nombreDe(d)}`,
+        detalle: d.archivo_nombre || 'Viene del banco de hojas de vida',
+        fecha,
+        periodicidad: 'ninguna',
+        alerta_dias: ALERTA_DIAS,
+        fecha_estado: st,
+        editable: false
+      });
+    });
+  } catch (err) {
+    /* si el banco aún no tiene tablas, el organizador sigue */
+  }
+  return items;
+}
+
+module.exports = { eventosDesdeBanco };
