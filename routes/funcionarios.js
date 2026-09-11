@@ -457,6 +457,25 @@ router.patch('/funcionarios/:id/estado', requireAuth, async (req, res) => {
   }
 });
 
+router.patch('/funcionarios/:id/requisitos-flags', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Colaborador inválido' });
+  const electrodiagnostico = flag01(req.body?.electrodiagnostico);
+  const exige_telemedicina = flag01(req.body?.exige_telemedicina);
+  try {
+    const result = await db.execute(
+      `UPDATE funcionarios
+       SET electrodiagnostico = ?, exige_telemedicina = ?
+       WHERE id = ?`,
+      [electrodiagnostico, exige_telemedicina, id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    res.json({ ok: true, id, electrodiagnostico, exige_telemedicina });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
 router.delete('/funcionarios/:id', requireAuth, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'Colaborador inválido' });

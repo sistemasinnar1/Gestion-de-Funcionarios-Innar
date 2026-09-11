@@ -1391,13 +1391,25 @@ body {
   word-break: break-word;
 }
 
-/* Opciones específicas (electrodiagnóstico / telemedicina) */
+/* Opciones específicas (electrodiagnóstico / telemedicina) — switches */
 .hv-flags {
   margin: 4px 0 18px;
   padding: 14px;
   border: 1px solid var(--innar-border);
   border-radius: 14px;
   background: linear-gradient(180deg, #f8faf9 0%, #f3f7f6 100%);
+}
+
+.hv-flags-panel {
+  margin: 0 0 16px;
+}
+
+.hv-flags-panel .hv-flags-inline {
+  margin: 0;
+}
+
+.hv-flags-panel .hv-flags-head {
+  margin-bottom: 10px;
 }
 
 .hv-flags-head {
@@ -1425,8 +1437,9 @@ body {
 .hv-flag {
   position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   margin: 0 0 8px;
   padding: 12px 14px;
   border: 1px solid transparent;
@@ -1460,38 +1473,36 @@ body {
   pointer-events: none;
 }
 
-.hv-flag-box {
+.hv-switch {
   position: relative;
   flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin-top: 1px;
-  border: 2px solid #b6c7c3;
-  border-radius: 6px;
-  background: #fff;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: #c5d0cd;
+  border: 1px solid #aebcba;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.hv-flag-box::after {
-  content: "";
+.hv-switch-thumb {
   position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 5px;
-  height: 9px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) scale(0);
-  transition: transform 0.12s ease;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.18s ease;
 }
 
-.hv-flag input:checked + .hv-flag-box {
-  border-color: var(--c-dark);
+.hv-flag input:checked + .hv-switch {
   background: var(--c-dark);
+  border-color: var(--c-dark);
 }
 
-.hv-flag input:checked + .hv-flag-box::after {
-  transform: rotate(45deg) scale(1);
+.hv-flag input:checked + .hv-switch .hv-switch-thumb {
+  transform: translateX(18px);
 }
 
 .hv-flag:has(input:checked) {
@@ -1504,6 +1515,7 @@ body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .hv-flag-name {
@@ -1518,6 +1530,10 @@ body {
   font-weight: 500;
   color: var(--innar-text-muted);
   line-height: 1.35;
+}
+
+.hv-flag-box {
+  display: none;
 }
 
 .hv-slots-actions {
@@ -1883,6 +1899,46 @@ body {
   background: var(--c-dark);
   border-color: var(--c-dark);
   color: #fff;
+}
+
+.org-toolbar {
+  align-items: center;
+}
+
+.org-select-pill,
+#view-org .hv-toolbar select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 200px;
+  min-height: 38px;
+  padding: 0 36px 0 16px;
+  border: 1px solid #d7e0de;
+  border-radius: 999px;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%232d4a47' d='M1.1 1.2L6 6.1l4.9-4.9 1.1 1.1L6 8.3 0 2.3z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 12px 8px;
+  color: var(--c-dark);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+
+.org-select-pill:hover,
+#view-org .hv-toolbar select:hover {
+  border-color: var(--c-primary);
+  background-color: #f6faf9;
+}
+
+.org-select-pill:focus,
+#view-org .hv-toolbar select:focus {
+  outline: none;
+  border-color: var(--c-dark);
+  box-shadow: var(--innar-focus-ring);
+  background-color: #fff;
 }
 
 .org-form-grid {

@@ -194,6 +194,7 @@
         </div>
       </div>
       <div id="hvFolderError" class="login-error hidden"></div>
+
       <div class="hv-slots-bar">
         <div>
           <h3 class="hv-section-title">Requisitos para contratar</h3>
@@ -204,6 +205,32 @@
           <button type="button" id="btnHvDescargar" class="btn-soft">Descargar PDF</button>
         </div>
       </div>
+
+      <section class="hv-flags-panel" id="hvPanelFlags" hidden>
+        <div class="hv-flags-head">
+          <span class="hv-flags-title">Requisitos específicos</span>
+          <span class="hv-flags-sub">Solo si aplican a esta persona · actívalos o desactívalos</span>
+        </div>
+        <div class="hv-flags hv-flags-inline">
+          <label class="hv-flag" for="hvFolderElectro">
+            <span class="hv-flag-text">
+              <span class="hv-flag-name">Electrodiagnóstico</span>
+              <span class="hv-flag-desc">Activa el requisito de certificado RCP</span>
+            </span>
+            <input type="checkbox" id="hvFolderElectro" role="switch" />
+            <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
+          </label>
+          <label class="hv-flag" for="hvFolderTelemedicina">
+            <span class="hv-flag-text">
+              <span class="hv-flag-name">Telemedicina</span>
+              <span class="hv-flag-desc">Exige el certificado de telemedicina (vigencia 2 años)</span>
+            </span>
+            <input type="checkbox" id="hvFolderTelemedicina" role="switch" />
+            <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
+          </label>
+        </div>
+      </section>
+
       <div id="hvDocs" class="hv-slots"></div>
 
       <section class="hv-panel" id="hvPanelCursos">
@@ -284,11 +311,11 @@
       </div>
 
       <section id="orgPanelPendientes">
-        <div class="hv-toolbar">
-          <select id="orgFiltroTema">
+        <div class="hv-toolbar org-toolbar">
+          <select id="orgFiltroTema" class="org-select-pill">
             <option value="">Todas las temáticas</option>
           </select>
-          <select id="orgFiltroOrden">
+          <select id="orgFiltroOrden" class="org-select-pill">
             <option value="eisenhower">Urgencia e importancia</option>
             <option value="fecha">Fecha de cumplimiento</option>
           </select>
@@ -303,8 +330,8 @@
       </section>
 
       <section id="orgPanelAgenda" class="hidden">
-        <div class="hv-toolbar">
-          <select id="orgFiltroAgendaTipo">
+        <div class="hv-toolbar org-toolbar">
+          <select id="orgFiltroAgendaTipo" class="org-select-pill">
             <option value="">Todos los tipos</option>
           </select>
           <button type="button" id="btnOrgEventoNuevo" class="btn-action">Nuevo evento</button>
@@ -402,23 +429,23 @@
         <div id="hvFlagsAsistencial" class="hv-flags hidden">
           <div class="hv-flags-head">
             <span class="hv-flags-title">Requisitos específicos</span>
-            <span class="hv-flags-sub">Solo si aplican a esta persona</span>
+            <span class="hv-flags-sub">Solo si aplican a esta persona · actívalos o desactívalos</span>
           </div>
           <label class="hv-flag" for="hvElectro">
-            <input type="checkbox" id="hvElectro" />
-            <span class="hv-flag-box" aria-hidden="true"></span>
             <span class="hv-flag-text">
               <span class="hv-flag-name">Electrodiagnóstico</span>
               <span class="hv-flag-desc">Activa el requisito de certificado RCP</span>
             </span>
+            <input type="checkbox" id="hvElectro" role="switch" />
+            <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
           </label>
           <label class="hv-flag" for="hvTelemedicina">
-            <input type="checkbox" id="hvTelemedicina" />
-            <span class="hv-flag-box" aria-hidden="true"></span>
             <span class="hv-flag-text">
               <span class="hv-flag-name">Telemedicina</span>
               <span class="hv-flag-desc">Exige el certificado de telemedicina (vigencia 2 años)</span>
             </span>
+            <input type="checkbox" id="hvTelemedicina" role="switch" />
+            <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
           </label>
         </div>
         <div id="hvNuevoError" class="login-error hidden"></div>

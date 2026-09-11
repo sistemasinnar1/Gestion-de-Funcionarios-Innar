@@ -555,8 +555,6 @@ function renderFicha(f, progreso) {
     ['Acudiente', f.acudiente_nombre ? `${f.acudiente_nombre}${f.acudiente_contacto ? ` · ${f.acudiente_contacto}` : ''}` : '—'],
     ['Riesgo ARL', f.riesgo_arl_label || f.riesgo_arl || 'Pendiente'],
     ['Próximo examen', f.proximo_examen_medico ? formatFecha(f.proximo_examen_medico) : 'Se calcula con examen + riesgo ARL'],
-    ['Electrodiagnóstico', Number(f.electrodiagnostico) === 1 ? 'Sí (exige RCP)' : 'No'],
-    ['Telemedicina', Number(f.exige_telemedicina) === 1 ? 'Exigible' : 'No exigida'],
     ['Cumpleaños', f.fecha_nacimiento ? formatCumple(f.fecha_nacimiento) : 'Pendiente (al cargar la cédula)'],
     ['Archivos', faltan > 0 ? `Faltan ${faltan}` : `${progreso?.cargados || 0}/${progreso?.requeridos || 0} listos`]
   ];
@@ -565,6 +563,50 @@ function renderFicha(f, progreso) {
       <dt>${escapeHtml(k)}</dt>
       <dd>${escapeHtml(v || '—')}</dd>
     </div>`).join('')}</dl>`;
+}
+
+function renderFlagsPanel(f, readOnly) {
+  const panel = $('hvPanelFlags');
+  if (!panel) return;
+  const esAsistencial = f?.tipo_persona === 'asistencial';
+  panel.hidden = !esAsistencial;
+  if (!esAsistencial) return;
+  const electro = $('hvFolderElectro');
+  const tele = $('hvFolderTelemedicina');
+  if (electro) {
+    electro.checked = Number(f.electrodiagnostico) === 1;
+    electro.disabled = Boolean(readOnly);
+  }
+  if (tele) {
+    tele.checked = Number(f.exige_telemedicina) === 1;
+    tele.disabled = Boolean(readOnly);
+  }
+}
+
+async function guardarFlagsRequisitos() {
+  if (!hvFolderId || !fichaActiva()) return;
+  const electro = $('hvFolderElectro')?.checked ? 1 : 0;
+  const tele = $('hvFolderTelemedicina')?.checked ? 1 : 0;
+  setError('hvFolderError', '');
+  try {
+    const res = await apiFetch(`/api/funcionarios/${hvFolderId}/requisitos-flags`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        electrodiagnostico: electro,
+        exige_telemedicina: tele
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError('hvFolderError', data.error || 'No se pudieron guardar los requisitos');
+      await abrirCarpeta(hvFolderId);
+      return;
+    }
+    await abrirCarpeta(hvFolderId);
+    cargarFuncionarios();
+  } catch (_) {
+    setError('hvFolderError', 'Error de conexión');
+  }
 }
 
 function textoSlot(req) {
@@ -906,6 +948,7 @@ async function abrirCarpeta(id) {
     if ($('btnHvEditar')) $('btnHvEditar').hidden = false;
     if ($('btnHvInactivar')) $('btnHvInactivar').textContent = activo ? 'Inactivar' : 'Reactivar';
     renderFicha(f, data.progreso);
+    renderFlagsPanel(f, !activo);
     renderRequisitos(data.requisitos || [], data.progreso, !activo);
     pintarPanelesExtras(data, !activo);
     showView('view-hv-folder');
@@ -1245,6 +1288,8 @@ function setupHojasVida() {
     mostrarPasoDatos(hvFolderData.funcionario.tipo_persona, true);
     $('dlgHvNuevo').showModal();
   });
+  $('hvFolderElectro')?.addEventListener('change', guardarFlagsRequisitos);
+  $('hvFolderTelemedicina')?.addEventListener('change', guardarFlagsRequisitos);
   $('btnHvImprimir')?.addEventListener('click', imprimirFicha);
   $('btnHvInactivar')?.addEventListener('click', abrirDialogoEstado);
   $('btnHvInactivarCerrar')?.addEventListener('click', () => $('dlgHvInactivar').close());
