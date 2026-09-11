@@ -231,13 +231,26 @@
       <section class="hv-panel" id="hvPanelContratos">
         <div class="hv-panel-head">
           <div>
-            <h3 class="hv-section-title">Contrato y otrosíes</h3>
-            <p class="hv-slots-sub">Fecha de firma y terminación. El sistema avisa 1 mes y 2 días antes del vencimiento.</p>
+            <h3 class="hv-section-title">Contrato, otrosíes y preaviso</h3>
+            <p class="hv-slots-sub">Fecha de inicio y terminación. El aviso usa solo la última vigencia (prórrogas anteriores no se alertan). Aviso: 1 mes + 2 días.</p>
             <div id="hvContratoAlerta" class="hv-missing-chip hv-panel-alert" hidden></div>
           </div>
-          <button type="button" id="btnHvContratoNuevo" class="btn-soft">Agregar contrato / otrosí</button>
+          <button type="button" id="btnHvContratoNuevo" class="btn-soft">Agregar contrato / otrosí / preaviso</button>
         </div>
         <div id="hvContratosTabla" class="hv-table-wrap"></div>
+      </section>
+
+      <section class="hv-panel" id="hvPanelVacaciones" hidden>
+        <div class="hv-panel-head">
+          <div>
+            <h3 class="hv-section-title">Vacaciones (contrato laboral)</h3>
+            <p class="hv-slots-sub">Tras 1 año continuo: 15 días. Se pueden pagar hasta 9 días. Caducan a los 2 años del devengo.</p>
+            <div id="hvVacacionesAlerta" class="hv-missing-chip hv-panel-alert" hidden></div>
+          </div>
+          <button type="button" id="btnHvVacacionNuevo" class="btn-soft">Registrar días</button>
+        </div>
+        <div id="hvVacacionesResumen" class="hv-ficha"></div>
+        <div id="hvVacacionesTabla" class="hv-table-wrap"></div>
       </section>
     </main>
   </div>
@@ -521,12 +534,13 @@
 
   <dialog id="dlgHvContrato" class="hv-dialog">
     <form id="formHvContrato" class="login-form">
-      <h3>Contrato u otrosí</h3>
+      <h3>Contrato, otrosí o preaviso</h3>
       <div class="form-group">
         <label for="hvContratoTipo">Tipo</label>
         <select id="hvContratoTipo" required>
           <option value="contrato">Contrato</option>
           <option value="otrosi">Otrosí</option>
+          <option value="preaviso">Preaviso</option>
         </select>
       </div>
       <div class="form-group">
@@ -534,13 +548,18 @@
         <input id="hvContratoDesc" maxlength="255" />
       </div>
       <div class="form-group">
-        <label for="hvContratoFirma">Fecha de firma</label>
-        <input id="hvContratoFirma" type="date" required />
+        <label for="hvContratoInicio">Fecha de inicio de contrato</label>
+        <input id="hvContratoInicio" type="date" required />
       </div>
       <div class="form-group">
+        <label for="hvContratoFirma">Fecha de firma</label>
+        <input id="hvContratoFirma" type="date" />
+        <p class="field-hint">Informativa; no reemplaza la fecha de inicio.</p>
+      </div>
+      <div class="form-group" id="hvContratoFinGroup">
         <label for="hvContratoFin">Fecha de terminación</label>
-        <input id="hvContratoFin" type="date" required />
-        <p class="field-hint">Se avisará 32 días antes (1 mes + 2 días).</p>
+        <input id="hvContratoFin" type="date" />
+        <p class="field-hint">Se avisará 32 días antes (1 mes + 2 días) según la última vigencia.</p>
       </div>
       <div class="form-group">
         <label for="hvContratoArchivo">Archivo</label>
@@ -549,6 +568,42 @@
       <div id="hvContratoError" class="login-error hidden"></div>
       <button type="submit" class="btn-login">Guardar</button>
       <button type="button" id="btnHvContratoCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvVacacion" class="hv-dialog">
+    <form id="formHvVacacion" class="login-form">
+      <h3>Registrar vacaciones</h3>
+      <div class="form-group">
+        <label for="hvVacacionTipo">Tipo</label>
+        <select id="hvVacacionTipo" required>
+          <option value="disfrute">Días disfrutados</option>
+          <option value="pago">Días pagados (máx. 9 en total)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="hvVacacionDias">Días</label>
+        <input id="hvVacacionDias" type="number" min="0.5" max="30" step="0.5" required />
+      </div>
+      <div class="form-group">
+        <label for="hvVacacionRegistro">Fecha de registro</label>
+        <input id="hvVacacionRegistro" type="date" required />
+      </div>
+      <div class="form-group">
+        <label for="hvVacacionInicio">Desde (opcional)</label>
+        <input id="hvVacacionInicio" type="date" />
+      </div>
+      <div class="form-group">
+        <label for="hvVacacionFin">Hasta (opcional)</label>
+        <input id="hvVacacionFin" type="date" />
+      </div>
+      <div class="form-group">
+        <label for="hvVacacionNotas">Notas (opcional)</label>
+        <input id="hvVacacionNotas" maxlength="255" />
+      </div>
+      <div id="hvVacacionError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnHvVacacionCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
 

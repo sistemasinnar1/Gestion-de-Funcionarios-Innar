@@ -698,6 +698,12 @@ function renderExtras(lista, readOnly) {
     </tr>`).join('')}</tbody></table>`;
 }
 
+function labelTipoContrato(tipo) {
+  if (tipo === 'otrosi') return 'Otrosí';
+  if (tipo === 'preaviso') return 'Preaviso';
+  return 'Contrato';
+}
+
 function renderContratos(lista, readOnly) {
   const el = $('hvContratosTabla');
   const alerta = $('hvContratoAlerta');
@@ -705,32 +711,34 @@ function renderContratos(lista, readOnly) {
   const rows = lista || [];
   if (alerta) {
     const prox = hvFolderData?.progreso?.contrato_estado;
-    const fin = rows
-      .map((r) => r.fecha_terminacion)
-      .filter(Boolean)
-      .sort()[0];
+    const fin = (rows || [])
+      .filter((r) => r.tipo !== 'preaviso' && r.fecha_terminacion)
+      .map((r) => String(r.fecha_terminacion).slice(0, 10))
+      .sort()
+      .reverse()[0];
     if (prox === 'vencido') {
       alerta.hidden = false;
       alerta.className = 'hv-missing-chip';
-      alerta.innerHTML = `${ICON_ALERT}<span>Hay contrato vencido</span>`;
+      alerta.innerHTML = `${ICON_ALERT}<span>La última vigencia del contrato está vencida${fin ? ` (${formatFecha(fin)})` : ''}</span>`;
     } else if (prox === 'por_vencer') {
       alerta.hidden = false;
       alerta.className = 'hv-missing-chip';
-      alerta.innerHTML = `${ICON_ALERT}<span>Contrato por vencer${fin ? ` el ${formatFecha(fin)}` : ''} (aviso 1 mes + 2 días)</span>`;
+      alerta.innerHTML = `${ICON_ALERT}<span>Última vigencia por vencer${fin ? ` el ${formatFecha(fin)}` : ''} (aviso 1 mes + 2 días)</span>`;
     } else {
       alerta.hidden = true;
     }
   }
   if (!rows.length) {
-    el.innerHTML = '<p class="hv-empty-table">Aún no hay contrato ni otrosíes.</p>';
+    el.innerHTML = '<p class="hv-empty-table">Aún no hay contrato, otrosí ni preaviso.</p>';
     return;
   }
   el.innerHTML = `<table class="hv-table"><thead><tr>
-    <th>Tipo</th><th>Descripción</th><th>Firma</th><th>Terminación</th><th>Acciones</th>
+    <th>Tipo</th><th>Descripción</th><th>Inicio</th><th>Firma</th><th>Terminación</th><th>Acciones</th>
   </tr></thead><tbody>${rows.map((c) => `
     <tr>
-      <td>${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}</td>
+      <td>${labelTipoContrato(c.tipo)}</td>
       <td class="hv-td-clip">${escapeHtml(c.descripcion || c.archivo_nombre || '—')}</td>
+      <td>${c.fecha_inicio ? formatFecha(c.fecha_inicio) : '—'}</td>
       <td>${c.fecha_firma ? formatFecha(c.fecha_firma) : '—'}</td>
       <td>${c.fecha_terminacion ? formatFecha(c.fecha_terminacion) : '—'}</td>
       <td class="hv-row-actions">
@@ -740,10 +748,75 @@ function renderContratos(lista, readOnly) {
     </tr>`).join('')}</tbody></table>`;
 }
 
+function renderVacaciones(data, movimientos, readOnly) {
+  const panel = $('hvPanelVacaciones');
+  const resumenEl = $('hvVacacionesResumen');
+  const tabla = $('hvVacacionesTabla');
+  const alerta = $('hvVacacionesAlerta');
+  const btn = $('btnHvVacacionNuevo');
+  if (!panel || !resumenEl || !tabla) return;
+
+  const vac = data || {};
+  panel.hidden = !vac.aplica;
+  if (!vac.aplica) return;
+  if (btn) btn.hidden = readOnly;
+
+  if (alerta) {
+    if (vac.sugerencia && vac.dias_pendientes > 0) {
+      alerta.hidden = false;
+      alerta.className = 'hv-missing-chip';
+      alerta.innerHTML = `${ICON_ALERT}<span>${escapeHtml(vac.sugerencia)}</span>`;
+    } else if (vac.sugerencia) {
+      alerta.hidden = false;
+      alerta.className = 'hv-missing-chip is-info';
+      alerta.innerHTML = `<span>${escapeHtml(vac.sugerencia)}</span>`;
+    } else {
+      alerta.hidden = true;
+    }
+  }
+
+  const items = [
+    ['Años continuos', String(vac.anios_continuos || 0)],
+    ['Inicio continuidad', vac.fecha_inicio_continuidad ? formatFecha(vac.fecha_inicio_continuidad) : '—'],
+    ['Devengados', `${vac.dias_devengados || 0} días`],
+    ['Disfrutados', `${vac.dias_disfrutados || 0}`],
+    ['Pagados', `${vac.dias_pagados || 0} / máx. ${vac.max_dias_pago || 9}`],
+    ['Caducados', `${vac.dias_caducados || 0}`],
+    ['Pendientes', `${vac.dias_pendientes || 0}`]
+  ];
+  resumenEl.innerHTML = `<dl class="hv-ficha-grid">${items.map(([k, v]) => `
+    <div class="hv-ficha-item">
+      <dt>${escapeHtml(k)}</dt>
+      <dd>${escapeHtml(v)}</dd>
+    </div>`).join('')}</dl>`;
+
+  const rows = movimientos || [];
+  if (!rows.length) {
+    tabla.innerHTML = '<p class="hv-empty-table">Sin movimientos de vacaciones registrados.</p>';
+    return;
+  }
+  tabla.innerHTML = `<table class="hv-table"><thead><tr>
+    <th>Tipo</th><th>Días</th><th>Registro</th><th>Periodo</th><th>Notas</th><th>Acciones</th>
+  </tr></thead><tbody>${rows.map((v) => `
+    <tr>
+      <td>${v.tipo === 'pago' ? 'Pagados' : 'Disfrutados'}</td>
+      <td>${escapeHtml(String(v.dias))}</td>
+      <td>${v.fecha_registro ? formatFecha(v.fecha_registro) : '—'}</td>
+      <td>${v.fecha_inicio || v.fecha_fin
+        ? `${v.fecha_inicio ? formatFecha(v.fecha_inicio) : '—'} → ${v.fecha_fin ? formatFecha(v.fecha_fin) : '—'}`
+        : '—'}</td>
+      <td class="hv-td-clip">${escapeHtml(v.notas || '—')}</td>
+      <td class="hv-row-actions">
+        ${readOnly ? '—' : `<button type="button" class="is-danger" data-vacacion-del="${v.id}">Quitar</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
 function pintarPanelesExtras(data, readOnly) {
   renderCursos(data.cursos || [], readOnly);
   renderExtras(data.adicionales || [], readOnly);
   renderContratos(data.contratos || [], readOnly);
+  renderVacaciones(data.vacaciones, data.vacaciones_movimientos || [], readOnly);
   ['btnHvCursoNuevo', 'btnHvExtraNuevo', 'btnHvContratoNuevo'].forEach((id) => {
     if ($(id)) $(id).hidden = readOnly;
   });
@@ -802,7 +875,7 @@ function abrirDialogoDescarga() {
     bits.push(`<label class="hv-check"><input type="checkbox" data-kind="extra" name="extra" value="${c.id}"/><span class="hv-check-text">Extra: ${escapeHtml(c.descripcion)}</span></label>`);
   });
   (hvFolderData.contratos || []).forEach((c) => {
-    bits.push(`<label class="hv-check"><input type="checkbox" data-kind="contrato" name="contrato" value="${c.id}"/><span class="hv-check-text">${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'}: ${escapeHtml(c.descripcion || c.archivo_nombre || '')}</span></label>`);
+    bits.push(`<label class="hv-check"><input type="checkbox" data-kind="contrato" name="contrato" value="${c.id}"/><span class="hv-check-text">${labelTipoContrato(c.tipo)}: ${escapeHtml(c.descripcion || c.archivo_nombre || '')}</span></label>`);
   });
   lista.innerHTML = bits.length ? bits.join('') : '<p class="hv-empty-table">No hay archivos para descargar.</p>';
   if ($('hvDescargaTodos')) $('hvDescargaTodos').checked = false;
@@ -1365,19 +1438,35 @@ function setupHojasVida() {
     if (!fichaActiva()) return;
     $('formHvContrato')?.reset();
     setError('hvContratoError', '');
+    const fin = $('hvContratoFin');
+    if (fin) fin.required = true;
     $('dlgHvContrato').showModal();
   });
   $('btnHvContratoCerrar')?.addEventListener('click', () => $('dlgHvContrato')?.close());
+  $('hvContratoTipo')?.addEventListener('change', () => {
+    const esPreaviso = $('hvContratoTipo').value === 'preaviso';
+    const fin = $('hvContratoFin');
+    if (fin) {
+      fin.required = !esPreaviso;
+      if (esPreaviso) fin.value = '';
+    }
+  });
   $('formHvContrato')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!hvFolderId || !fichaActiva()) return;
     const archivo = $('hvContratoArchivo')?.files?.[0];
     if (!archivo) return;
     setError('hvContratoError', '');
+    const tipo = $('hvContratoTipo').value;
+    if (tipo !== 'preaviso' && !$('hvContratoFin').value) {
+      setError('hvContratoError', 'Indica la fecha de terminación');
+      return;
+    }
     const fd = new FormData();
     fd.append('archivo', archivo);
     fd.append('tipo', $('hvContratoTipo').value);
     fd.append('descripcion', $('hvContratoDesc').value.trim());
+    fd.append('fecha_inicio', $('hvContratoInicio').value);
     fd.append('fecha_firma', $('hvContratoFirma').value);
     fd.append('fecha_terminacion', $('hvContratoFin').value);
     try {
@@ -1400,6 +1489,47 @@ function setupHojasVida() {
     }
   });
 
+  $('btnHvVacacionNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvVacacion')?.reset();
+    if ($('hvVacacionRegistro')) {
+      const n = new Date();
+      const m = String(n.getMonth() + 1).padStart(2, '0');
+      const d = String(n.getDate()).padStart(2, '0');
+      $('hvVacacionRegistro').value = `${n.getFullYear()}-${m}-${d}`;
+    }
+    setError('hvVacacionError', '');
+    $('dlgHvVacacion').showModal();
+  });
+  $('btnHvVacacionCerrar')?.addEventListener('click', () => $('dlgHvVacacion')?.close());
+  $('formHvVacacion')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId || !fichaActiva()) return;
+    setError('hvVacacionError', '');
+    try {
+      const res = await apiFetch(`/api/funcionarios/${hvFolderId}/vacaciones`, {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo: $('hvVacacionTipo').value,
+          dias: Number($('hvVacacionDias').value),
+          fecha_registro: $('hvVacacionRegistro').value,
+          fecha_inicio: $('hvVacacionInicio').value || null,
+          fecha_fin: $('hvVacacionFin').value || null,
+          notas: $('hvVacacionNotas').value.trim() || null
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvVacacionError', data.error || 'No se pudo guardar');
+        return;
+      }
+      $('dlgHvVacacion').close();
+      await abrirCarpeta(hvFolderId);
+    } catch (_) {
+      setError('hvVacacionError', 'Error de conexión');
+    }
+  });
+
   const panelClick = async (e) => {
     if (!hvFolderId) return;
     const cursoVer = e.target.closest('[data-curso-ver]');
@@ -1408,6 +1538,7 @@ function setupHojasVida() {
     const extraDel = e.target.closest('[data-extra-del]');
     const contratoVer = e.target.closest('[data-contrato-ver]');
     const contratoDel = e.target.closest('[data-contrato-del]');
+    const vacacionDel = e.target.closest('[data-vacacion-del]');
     if (cursoVer) window.open(`/api/funcionarios/${hvFolderId}/cursos/${cursoVer.getAttribute('data-curso-ver')}/archivo`, '_blank');
     if (extraVer) window.open(`/api/funcionarios/${hvFolderId}/adicionales/${extraVer.getAttribute('data-extra-ver')}/archivo`, '_blank');
     if (contratoVer) window.open(`/api/funcionarios/${hvFolderId}/contratos/${contratoVer.getAttribute('data-contrato-ver')}/archivo`, '_blank');
@@ -1427,10 +1558,16 @@ function setupHojasVida() {
       await abrirCarpeta(hvFolderId);
       cargarFuncionarios();
     }
+    if (vacacionDel && fichaActiva()) {
+      if (!confirm('¿Quitar este registro de vacaciones?')) return;
+      await apiFetch(`/api/funcionarios/${hvFolderId}/vacaciones/${vacacionDel.getAttribute('data-vacacion-del')}`, { method: 'DELETE' });
+      await abrirCarpeta(hvFolderId);
+    }
   };
   $('hvCursosTabla')?.addEventListener('click', panelClick);
   $('hvExtrasTabla')?.addEventListener('click', panelClick);
   $('hvContratosTabla')?.addEventListener('click', panelClick);
+  $('hvVacacionesTabla')?.addEventListener('click', panelClick);
   $('btnHvNuevoCerrar')?.addEventListener('click', () => $('dlgHvNuevo').close());
   $('btnHvNuevoCerrarTipo')?.addEventListener('click', () => $('dlgHvNuevo').close());
   $('btnHvNuevoAtras')?.addEventListener('click', mostrarPasoTipo);

@@ -49,18 +49,27 @@ const DOC_TYPES = [
   { id: 'carnet_vacunacion', label: 'Carnet de vacunación', required: 'asistencial' },
   { id: 'certificado_rcp', label: 'Certificado de reanimación cardiopulmonar (RCP)', required: 'flag:electrodiagnostico' },
   { id: 'cursos_generales', label: 'Constancias y certificados de cursos', required: 'ambos', multiple: true },
-  { id: 'constancias_trabajo', label: 'Constancias de trabajo', required: 'ambos', multiple: true },
+  {
+    id: 'constancias_trabajo',
+    label: 'Certificaciones / constancias laborales',
+    required: 'ambos',
+    optional: true,
+    multiple: true
+  },
   {
     id: 'examen_medico',
     label: 'Examen médico ocupacional',
     required: 'ambos',
+    /** Solo exigible en contrato laboral; en contratistas queda opcional. */
+    soloExigibleSiVinculacion: 'contrato_trabajo',
     pideFecha: 'documento',
     labelFecha: 'Fecha del examen'
   },
   {
     id: 'recomendaciones_medico',
     label: 'Recomendaciones médico ocupacionales (Instituto)',
-    required: 'ambos'
+    required: 'ambos',
+    soloExigibleSiVinculacion: 'contrato_trabajo'
   },
   { id: 'afiliacion_salud', label: 'Afiliación a salud', required: 'ambos' },
   { id: 'afiliacion_pension', label: 'Afiliación a pensión', required: 'ambos' },
@@ -72,37 +81,48 @@ const DOC_TYPES = [
   },
   {
     id: 'curso_violencia_sexual',
-    label: 'Curso de violencia sexual',
+    label: 'Curso de violencia sexual (Res. 3100)',
     required: 'asistencial',
     vigenciaMeses: 24,
+    multiple: true,
     pideFecha: 'documento',
     labelFecha: 'Fecha del curso'
   },
   {
     id: 'curso_soporte_vital',
-    label: 'Soporte básico o avanzado vital',
+    label: 'Soporte básico o avanzado vital (Res. 3100)',
     required: 'asistencial',
     vigenciaMeses: 24,
+    multiple: true,
     pideFecha: 'documento',
     labelFecha: 'Fecha del curso'
   },
   {
     id: 'curso_duelo',
-    label: 'Gestión de duelo',
+    label: 'Gestión de duelo (Res. 3100)',
     required: 'asistencial',
     vigenciaMeses: 24,
+    multiple: true,
     pideFecha: 'documento',
     labelFecha: 'Fecha del curso'
   },
   {
     id: 'curso_telemedicina',
-    label: 'Telemedicina',
+    label: 'Telemedicina (Res. 3100)',
     required: 'flag:exige_telemedicina',
     vigenciaMeses: 24,
+    multiple: true,
     pideFecha: 'documento',
     labelFecha: 'Fecha del curso'
   },
-  { id: 'poliza_rc', label: 'Póliza de responsabilidad civil', required: 'ambos', pideFecha: 'vencimiento', labelFecha: 'Fecha de vencimiento' },
+  {
+    id: 'poliza_rc',
+    label: 'Póliza de responsabilidad civil',
+    required: 'ambos',
+    multiple: true,
+    pideFecha: 'vencimiento',
+    labelFecha: 'Fecha de vencimiento'
+  },
   { id: 'rut', label: 'RUT', required: 'ambos' }
 ];
 
@@ -132,7 +152,8 @@ function flagsDePersona(persona = {}) {
 }
 
 function aplicaA(doc, tipoPersona, flags = {}) {
-  if (doc.required === 'ambos' || doc.optionalAdmin) return true;
+  if (doc.optional || doc.optionalAdmin) return true;
+  if (doc.required === 'ambos') return true;
   if (doc.required === 'asistencial' || doc.required === 'administrativo') {
     return doc.required === tipoPersona;
   }
@@ -141,7 +162,11 @@ function aplicaA(doc, tipoPersona, flags = {}) {
   return false;
 }
 
-function esRequerido(doc, tipoPersona, flags = {}) {
+function esRequerido(doc, tipoPersona, flags = {}, persona = {}) {
+  if (doc.optional) return false;
+  if (doc.soloExigibleSiVinculacion) {
+    if (persona.forma_vinculacion !== doc.soloExigibleSiVinculacion) return false;
+  }
   if (doc.required === 'ambos') return true;
   if (doc.required === 'asistencial' || doc.required === 'administrativo') {
     return doc.required === tipoPersona;
@@ -149,6 +174,37 @@ function esRequerido(doc, tipoPersona, flags = {}) {
   if (doc.required === 'flag:electrodiagnostico') return Boolean(flags.electrodiagnostico);
   if (doc.required === 'flag:exige_telemedicina') return Boolean(flags.exige_telemedicina);
   return false;
+}
+
+/** Hoy en YYYY-MM-DD (local). */
+function hoyIsoLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Elige la terminación vigente para alertas: la próxima futura;
+ * si todas pasaron, la más reciente. Así las prórrogas (otrosíes)
+ * anulan los vencimientos anteriores.
+ */
+function elegirTerminacion(fechas) {
+  const ordenadas = (fechas || []).filter(Boolean).slice().sort();
+  if (!ordenadas.length) return null;
+  const hoy = hoyIsoLocal();
+  const futura = ordenadas.find((f) => f >= hoy);
+  if (futura) return futura;
+  return ordenadas[ordenadas.length - 1];
+}
+
+/** Contratos/otrosíes cuentan para prórroga; el preaviso no. */
+function fechasTerminacionParaAlerta(contratosRows) {
+  return (contratosRows || [])
+    .filter((c) => c && c.tipo !== 'preaviso')
+    .map((c) => fechaIso(c.fecha_terminacion))
+    .filter(Boolean);
 }
 
 function addMonths(iso, months) {
@@ -238,7 +294,7 @@ function armarChecklist(tipoPersona, documentosRows, persona = {}) {
     return {
       tipo: doc.id,
       label: doc.label,
-      required: esRequerido(doc, tipo, flags),
+      required: esRequerido(doc, tipo, flags, persona),
       multiple: Boolean(doc.multiple),
       pideFechaNacimiento: Boolean(doc.pideFechaNacimiento),
       pideFecha: doc.pideFecha || null,
@@ -255,10 +311,13 @@ function progresoDe(checklist, extras = {}) {
   const req = checklist.filter((item) => item.required);
   const cargados = req.filter((item) => item.estado === 'cargado' || item.estado === 'por_vencer').length;
   const faltantes = Math.max(0, req.length - cargados);
-  let vencidos = checklist.filter((item) => item.estado === 'vencido').length;
-  let por_vencer = checklist.filter((item) => item.estado === 'por_vencer').length;
+  let vencidos = checklist.filter((item) => item.required && item.estado === 'vencido').length;
+  let por_vencer = checklist.filter((item) => item.required && item.estado === 'por_vencer').length;
 
-  const examenEstado = estadoFecha(extras.proximo_examen_medico, ALERTA_DIAS);
+  const examenRequerido = extras.examen_requerido !== false;
+  const examenEstado = examenRequerido
+    ? estadoFecha(extras.proximo_examen_medico, ALERTA_DIAS)
+    : null;
   if (examenEstado === 'vencido') vencidos += 1;
   if (examenEstado === 'por_vencer') por_vencer += 1;
 
@@ -339,6 +398,9 @@ module.exports = {
   addDays,
   proximoExamenDesde,
   estadoFecha,
+  elegirTerminacion,
+  fechasTerminacionParaAlerta,
+  hoyIsoLocal,
   ALERTA_DIAS,
   CONTRATO_ALERTA_DIAS
 };

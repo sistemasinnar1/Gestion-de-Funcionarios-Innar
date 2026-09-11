@@ -1,5 +1,12 @@
 const db = require('./db-mysql');
-const { fechaIso, estadoFecha, CONTRATO_ALERTA_DIAS, ALERTA_DIAS } = require('./documentos-catalogo');
+const {
+  fechaIso,
+  estadoFecha,
+  CONTRATO_ALERTA_DIAS,
+  ALERTA_DIAS,
+  elegirTerminacion,
+  fechasTerminacionParaAlerta
+} = require('./documentos-catalogo');
 
 function nombreDe(row) {
   return `${row.nombres || ''} ${row.apellidos || ''}`.trim();
@@ -9,12 +16,12 @@ async function eventosDesdeBanco() {
   const items = [];
   try {
     const personas = await db.query(
-      `SELECT id, nombres, apellidos, fecha_nacimiento, proximo_examen_medico
+      `SELECT id, nombres, apellidos, fecha_nacimiento, forma_vinculacion, proximo_examen_medico
        FROM funcionarios WHERE activo = 1`
     );
     personas.forEach((p) => {
       const nombre = nombreDe(p);
-      if (p.proximo_examen_medico) {
+      if (p.forma_vinculacion === 'contrato_trabajo' && p.proximo_examen_medico) {
         const fecha = fechaIso(p.proximo_examen_medico);
         items.push({
           id: `banco-examen-${p.id}`,
@@ -62,23 +69,33 @@ async function eventosDesdeBanco() {
     });
 
     const contratos = await db.query(
-      `SELECT c.id, c.tipo, c.descripcion, c.fecha_terminacion, f.nombres, f.apellidos
+      `SELECT c.id, c.funcionario_id, c.tipo, c.descripcion, c.fecha_terminacion, f.nombres, f.apellidos
        FROM contratos c
        INNER JOIN funcionarios f ON f.id = c.funcionario_id
        WHERE f.activo = 1 AND c.fecha_terminacion IS NOT NULL`
     );
+    const byPerson = {};
     contratos.forEach((c) => {
-      const fecha = fechaIso(c.fecha_terminacion);
-      const st = estadoFecha(fecha, CONTRATO_ALERTA_DIAS);
+      if (!byPerson[c.funcionario_id]) byPerson[c.funcionario_id] = [];
+      byPerson[c.funcionario_id].push(c);
+    });
+    Object.keys(byPerson).forEach((fid) => {
+      const lista = byPerson[fid];
+      const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(lista));
+      if (!ultimaFin) return;
+      const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
       if (st !== 'vencido' && st !== 'por_vencer') return;
+      const c = lista
+        .filter((row) => row.tipo !== 'preaviso' && fechaIso(row.fecha_terminacion) === ultimaFin)
+        .sort((a, b) => Number(b.id) - Number(a.id))[0] || lista[0];
       items.push({
-        id: `banco-contrato-${c.id}`,
+        id: `banco-contrato-${fid}`,
         fuente: 'banco',
         tipo: 'otro',
         tipo_label: c.tipo === 'otrosi' ? 'Otrosí laboral' : 'Contrato laboral',
         titulo: `${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'} — ${nombreDe(c)}`,
-        detalle: c.descripcion || 'Viene del banco de hojas de vida',
-        fecha,
+        detalle: c.descripcion || 'Última vigencia (prórrogas anteriores no se alertan)',
+        fecha: ultimaFin,
         periodicidad: 'ninguna',
         alerta_dias: CONTRATO_ALERTA_DIAS,
         fecha_estado: st,
@@ -87,12 +104,18 @@ async function eventosDesdeBanco() {
     });
 
     const docs = await db.query(
-      `SELECT d.id, d.tipo, d.fecha_vencimiento, d.archivo_nombre, f.nombres, f.apellidos
+      `SELECT d.id, d.funcionario_id, d.tipo, d.fecha_vencimiento, d.archivo_nombre, f.nombres, f.apellidos
        FROM documentos d
        INNER JOIN funcionarios f ON f.id = d.funcionario_id
-       WHERE f.activo = 1 AND d.fecha_vencimiento IS NOT NULL`
+       WHERE f.activo = 1 AND d.fecha_vencimiento IS NOT NULL
+       ORDER BY d.id DESC`
     );
+    const latestDoc = {};
     docs.forEach((d) => {
+      const key = `${d.funcionario_id}:${d.tipo}`;
+      if (!latestDoc[key]) latestDoc[key] = d;
+    });
+    Object.values(latestDoc).forEach((d) => {
       const fecha = fechaIso(d.fecha_vencimiento);
       const st = estadoFecha(fecha, ALERTA_DIAS);
       if (st !== 'vencido' && st !== 'por_vencer') return;
@@ -104,12 +127,12 @@ async function eventosDesdeBanco() {
         curso_telemedicina: 'Telemedicina'
       };
       items.push({
-        id: `banco-doc-${d.id}`,
+        id: `banco-doc-${d.funcionario_id}-${d.tipo}`,
         fuente: 'banco',
         tipo: 'otro',
         tipo_label: labels[d.tipo] || 'Documento del personal',
         titulo: `${labels[d.tipo] || d.tipo} — ${nombreDe(d)}`,
-        detalle: d.archivo_nombre || 'Viene del banco de hojas de vida',
+        detalle: d.archivo_nombre || 'Vigencia actual (historiales anteriores no se alertan)',
         fecha,
         periodicidad: 'ninguna',
         alerta_dias: ALERTA_DIAS,

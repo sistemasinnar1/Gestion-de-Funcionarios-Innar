@@ -23,9 +23,12 @@ const {
   alertaDe,
   fechasParaAlta,
   fechaIso,
-  proximoExamenDesde
+  proximoExamenDesde,
+  elegirTerminacion,
+  fechasTerminacionParaAlerta
 } = require('../utils/documentos-catalogo');
 const { empaquetarPdf } = require('../utils/pdf-pack');
+const { calcularVacaciones, fechaInicioContinuidad, MAX_DIAS_PAGO } = require('../utils/vacaciones');
 
 storage.ensureDirs();
 
@@ -112,14 +115,6 @@ function hoyIso() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function elegirTerminacion(fechas) {
-  if (!fechas.length) return null;
-  const hoy = hoyIso();
-  const futura = fechas.find((f) => f >= hoy);
-  if (futura) return futura;
-  return fechas[fechas.length - 1];
 }
 
 async function reemplazarPrevios(funcionarioId, tipo, keepId) {
@@ -242,7 +237,7 @@ async function adicionalesDe(id) {
 async function contratosDe(id) {
   return db.query(
     `SELECT c.id, c.tipo, c.descripcion, c.archivo_nombre, c.archivo_path,
-            c.fecha_firma, c.fecha_terminacion, c.creado_en,
+            c.fecha_inicio, c.fecha_firma, c.fecha_terminacion, c.creado_en,
             u.nombre AS subido_por_nombre
      FROM contratos c
      LEFT JOIN usuarios u ON u.id = c.subido_por
@@ -252,19 +247,31 @@ async function contratosDe(id) {
   );
 }
 
-async function proximaTerminacionContrato(id) {
-  const rows = await db.query(
-    `SELECT fecha_terminacion FROM contratos
-     WHERE funcionario_id = ? AND fecha_terminacion IS NOT NULL
-     ORDER BY fecha_terminacion ASC`,
+async function vacacionesDe(id) {
+  return db.query(
+    `SELECT v.id, v.tipo, v.dias, v.fecha_inicio, v.fecha_fin, v.fecha_registro, v.notas, v.creado_en,
+            u.nombre AS registrado_por_nombre
+     FROM vacaciones v
+     LEFT JOIN usuarios u ON u.id = v.registrado_por
+     WHERE v.funcionario_id = ?
+     ORDER BY v.fecha_registro DESC, v.id DESC`,
     [id]
   );
-  return elegirTerminacion(rows.map((r) => fechaIso(r.fecha_terminacion)).filter(Boolean));
+}
+
+async function proximaTerminacionContrato(id) {
+  const rows = await db.query(
+    `SELECT tipo, fecha_terminacion FROM contratos
+     WHERE funcionario_id = ? AND fecha_terminacion IS NOT NULL`,
+    [id]
+  );
+  return elegirTerminacion(fechasTerminacionParaAlerta(rows));
 }
 
 function mapearTerminacionesPorPersona(rows) {
   const byPerson = {};
   rows.forEach((r) => {
+    if (r.tipo === 'preaviso') return;
     const fecha = fechaIso(r.fecha_terminacion);
     if (!fecha) return;
     if (!byPerson[r.funcionario_id]) byPerson[r.funcionario_id] = [];
@@ -289,10 +296,9 @@ async function resumenPersonas(rows) {
     ids
   );
   const contratos = await db.query(
-    `SELECT funcionario_id, fecha_terminacion
+    `SELECT funcionario_id, tipo, fecha_terminacion
      FROM contratos
-     WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL
-     ORDER BY fecha_terminacion ASC`,
+     WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
     ids
   );
   const byPerson = {};
@@ -306,7 +312,8 @@ async function resumenPersonas(rows) {
     const proxima_terminacion_contrato = terminaciones[row.id] || null;
     const progreso = progresoDe(checklist, {
       proximo_examen_medico: row.proximo_examen_medico || null,
-      proxima_terminacion_contrato
+      proxima_terminacion_contrato,
+      examen_requerido: row.forma_vinculacion === 'contrato_trabajo'
     });
     return {
       ...presentarFuncionario(row),
@@ -555,19 +562,26 @@ router.get('/funcionarios/:id', requireAuth, async (req, res) => {
     const cursos = await cursosDe(id);
     const adicionales = await adicionalesDe(id);
     const contratos = await contratosDe(id);
+    const vacacionesRows = await vacacionesDe(id);
     const requisitos = armarChecklist(funcionario.tipo_persona, docs, funcionario);
-    const proxima_terminacion_contrato = elegirTerminacion(
-      contratos.map((c) => fechaIso(c.fecha_terminacion)).filter(Boolean).sort()
-    );
+    const proxima_terminacion_contrato = elegirTerminacion(fechasTerminacionParaAlerta(contratos));
+    const vacaciones = calcularVacaciones({
+      forma_vinculacion: funcionario.forma_vinculacion,
+      fecha_inicio_continuidad: fechaInicioContinuidad(contratos),
+      movimientos: vacacionesRows
+    });
     res.json({
       funcionario: presentarFuncionario(funcionario),
       cursos,
       adicionales,
       contratos,
+      vacaciones_movimientos: vacacionesRows,
+      vacaciones,
       requisitos,
       progreso: progresoDe(requisitos, {
         proximo_examen_medico: funcionario.proximo_examen_medico || null,
-        proxima_terminacion_contrato
+        proxima_terminacion_contrato,
+        examen_requerido: funcionario.forma_vinculacion === 'contrato_trabajo'
       }),
       riesgos_arl: RIESGO_ARL
     });
@@ -851,6 +865,7 @@ router.post('/funcionarios/:id/contratos', requireAuth, (req, res) => {
     const id = parseId(req.params.id);
     const tipo = clean(req.body?.tipo, 20);
     const descripcion = clean(req.body?.descripcion, 255) || null;
+    const fecha_inicio = fechaIso(req.body?.fecha_inicio);
     const fecha_firma = fechaIso(req.body?.fecha_firma);
     const fecha_terminacion = fechaIso(req.body?.fecha_terminacion);
 
@@ -858,13 +873,17 @@ router.post('/funcionarios/:id/contratos', requireAuth, (req, res) => {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Colaborador inválido' });
     }
-    if (tipo !== 'contrato' && tipo !== 'otrosi') {
+    if (tipo !== 'contrato' && tipo !== 'otrosi' && tipo !== 'preaviso') {
       fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: 'El tipo debe ser contrato u otrosi' });
+      return res.status(400).json({ error: 'El tipo debe ser contrato, otrosí o preaviso' });
     }
-    if (!fecha_firma || !fecha_terminacion) {
+    if (!fecha_inicio) {
       fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: 'Indica fecha de firma y fecha de terminación' });
+      return res.status(400).json({ error: 'Indica la fecha de inicio de contrato' });
+    }
+    if (tipo !== 'preaviso' && !fecha_terminacion) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Indica la fecha de terminación' });
     }
 
     try {
@@ -881,14 +900,15 @@ router.post('/funcionarios/:id/contratos', requireAuth, (req, res) => {
       const result = await db.execute(
         `INSERT INTO contratos
           (funcionario_id, tipo, descripcion, archivo_nombre, archivo_path,
-           fecha_firma, fecha_terminacion, subido_por)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           fecha_inicio, fecha_firma, fecha_terminacion, subido_por)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           tipo,
           descripcion,
           req.file.originalname,
           rel,
+          fecha_inicio,
           fecha_firma,
           fecha_terminacion,
           req.session.usuarioId
@@ -915,6 +935,78 @@ router.delete('/funcionarios/:id/contratos/:contratoId', requireAuth, async (req
     await db.execute('DELETE FROM contratos WHERE id = ? AND funcionario_id = ?', [contratoId, id]);
     storage.borrarArchivo(row.archivo_path);
     res.json({ ok: true, id: contratoId });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.post('/funcionarios/:id/vacaciones', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Colaborador inválido' });
+  const tipo = clean(req.body?.tipo, 20);
+  const dias = Number(req.body?.dias);
+  const fecha_inicio = fechaIso(req.body?.fecha_inicio);
+  const fecha_fin = fechaIso(req.body?.fecha_fin);
+  const fecha_registro = fechaIso(req.body?.fecha_registro) || hoyIso();
+  const notas = clean(req.body?.notas, 255) || null;
+
+  if (tipo !== 'disfrute' && tipo !== 'pago') {
+    return res.status(400).json({ error: 'El tipo debe ser disfrute o pago' });
+  }
+  if (!(dias > 0) || dias > 30) {
+    return res.status(400).json({ error: 'Indica una cantidad de días válida' });
+  }
+
+  try {
+    const funcionario = await db.queryOne(
+      'SELECT id, forma_vinculacion FROM funcionarios WHERE id = ? AND activo = 1',
+      [id]
+    );
+    if (!funcionario) return res.status(404).json({ error: 'Colaborador no encontrado' });
+    if (funcionario.forma_vinculacion !== 'contrato_trabajo') {
+      return res.status(400).json({ error: 'Las vacaciones solo aplican a contrato laboral' });
+    }
+    const contratos = await contratosDe(id);
+    const movs = await vacacionesDe(id);
+    const resumen = calcularVacaciones({
+      forma_vinculacion: funcionario.forma_vinculacion,
+      fecha_inicio_continuidad: fechaInicioContinuidad(contratos),
+      movimientos: movs
+    });
+    if (dias > resumen.dias_pendientes) {
+      return res.status(400).json({
+        error: `Solo hay ${resumen.dias_pendientes} día(s) pendientes`
+      });
+    }
+    if (tipo === 'pago' && dias > resumen.max_pago_restante) {
+      return res.status(400).json({
+        error: `Solo se pueden pagar hasta ${MAX_DIAS_PAGO} días en total (restan ${resumen.max_pago_restante})`
+      });
+    }
+    const result = await db.execute(
+      `INSERT INTO vacaciones
+        (funcionario_id, tipo, dias, fecha_inicio, fecha_fin, fecha_registro, notas, registrado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, tipo, dias, fecha_inicio, fecha_fin, fecha_registro, notas, req.session.usuarioId]
+    );
+    res.json({ ok: true, id: result.insertId });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.delete('/funcionarios/:id/vacaciones/:vacId', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  const vacId = parseId(req.params.vacId);
+  if (!id || !vacId) return res.status(400).json({ error: 'Solicitud inválida' });
+  try {
+    const row = await db.queryOne(
+      'SELECT id FROM vacaciones WHERE id = ? AND funcionario_id = ?',
+      [vacId, id]
+    );
+    if (!row) return res.status(404).json({ error: 'Registro no encontrado' });
+    await db.execute('DELETE FROM vacaciones WHERE id = ? AND funcionario_id = ?', [vacId, id]);
+    res.json({ ok: true, id: vacId });
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }
@@ -1024,7 +1116,7 @@ router.post('/funcionarios/:id/descarga-pdf', requireAuth, async (req, res) => {
         [id]
       );
       contratos = await db.query(
-        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
+        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_inicio, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
         [id]
       );
     } else {
@@ -1042,7 +1134,7 @@ router.post('/funcionarios/:id/descarga-pdf', requireAuth, async (req, res) => {
         idsByKind.extra
       );
       contratos = await queryByIds(
-        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
+        'SELECT id, tipo, archivo_path, archivo_nombre, fecha_inicio, fecha_firma, creado_en FROM contratos WHERE funcionario_id = ?',
         idsByKind.contrato
       );
     }
@@ -1060,7 +1152,7 @@ router.post('/funcionarios/:id/descarga-pdf', requireAuth, async (req, res) => {
         ...docs.map((r) => ({ kind: 'doc', row: r, rank: ordenCatalogoTipo(r.tipo), extra: r.id })),
         ...cursos.map((r) => ({ kind: 'curso', row: r, rank: 1000, extra: r.fecha_certificacion || r.creado_en || r.id })),
         ...extras.map((r) => ({ kind: 'extra', row: r, rank: 2000, extra: r.creado_en || r.id })),
-        ...contratos.map((r) => ({ kind: 'contrato', row: r, rank: 3000, extra: r.fecha_firma || r.creado_en || r.id }))
+        ...contratos.map((r) => ({ kind: 'contrato', row: r, rank: 3000, extra: r.fecha_inicio || r.fecha_firma || r.creado_en || r.id }))
       ].sort((a, b) => {
         if (a.rank !== b.rank) return a.rank - b.rank;
         return String(a.extra).localeCompare(String(b.extra));

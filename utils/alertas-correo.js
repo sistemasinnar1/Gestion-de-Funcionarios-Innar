@@ -1,7 +1,7 @@
 const db = require('./db-mysql');
 const logger = require('./logger');
 const mailer = require('./mailer');
-const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, daysUntil, estadoFecha } = require('./documentos-catalogo');
+const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, estadoFecha, elegirTerminacion, fechasTerminacionParaAlerta } = require('./documentos-catalogo');
 const { eventosDesdeBanco } = require('./organizador-banco');
 const { enriquecerEvento, TEMATICAS } = require('./organizador-catalogo');
 
@@ -122,7 +122,7 @@ async function recogerAlertas() {
   const org = await recogerAlertasOrganizador();
   const personas = await db.query(
     `SELECT id, nombres, apellidos, documento, fecha_nacimiento, tipo_persona,
-            electrodiagnostico, exige_telemedicina, proximo_examen_medico
+            forma_vinculacion, electrodiagnostico, exige_telemedicina, proximo_examen_medico
      FROM funcionarios WHERE activo = 1
      ORDER BY apellidos, nombres`
   );
@@ -151,7 +151,7 @@ async function recogerAlertas() {
     ids
   );
   const contratosRows = await db.query(
-    `SELECT funcionario_id, fecha_terminacion, tipo, descripcion
+    `SELECT id, funcionario_id, fecha_terminacion, tipo, descripcion
      FROM contratos
      WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
     ids
@@ -180,6 +180,7 @@ async function recogerAlertas() {
     if (faltan > 0) incompletos += 1;
     const persona = nombreDe(p);
     checklist.forEach((item) => {
+      if (!item.required) return;
       if (item.estado !== 'vencido' && item.estado !== 'por_vencer') return;
       const latest = item.archivos[0];
       const row = {
@@ -191,7 +192,10 @@ async function recogerAlertas() {
       if (item.estado === 'vencido') vencidos.push(row);
       else porVencer.push(row);
     });
-    const examEstado = estadoFecha(p.proximo_examen_medico, ALERTA_DIAS);
+    const examRequerido = p.forma_vinculacion === 'contrato_trabajo';
+    const examEstado = examRequerido
+      ? estadoFecha(p.proximo_examen_medico, ALERTA_DIAS)
+      : null;
     if (examEstado === 'vencido' || examEstado === 'por_vencer') {
       examen.push({
         persona,
@@ -199,17 +203,21 @@ async function recogerAlertas() {
         estado: examEstado
       });
     }
-    (contratosBy[p.id] || []).forEach((c) => {
-      const st = estadoFecha(c.fecha_terminacion, CONTRATO_ALERTA_DIAS);
+    const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(contratosBy[p.id] || []));
+    if (ultimaFin) {
+      const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
       if (st === 'vencido' || st === 'por_vencer') {
+        const ultimo = (contratosBy[p.id] || [])
+          .filter((c) => c.tipo !== 'preaviso' && String(c.fecha_terminacion || '').slice(0, 10) === ultimaFin)
+          .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
         contratos.push({
           persona,
-          requisito: c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato',
-          vence: formatFecha(c.fecha_terminacion),
+          requisito: ultimo?.tipo === 'otrosi' ? 'Otrosí (última prórroga)' : 'Contrato (última vigencia)',
+          vence: formatFecha(ultimaFin),
           estado: st
         });
       }
-    });
+    }
     const days = cumpleEnDias(p.fecha_nacimiento);
     if (days != null && days >= 0 && days <= 7) {
       cumpleanos.push({

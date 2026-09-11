@@ -173,10 +173,11 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS contratos (
       id INT AUTO_INCREMENT PRIMARY KEY,
       funcionario_id INT NOT NULL,
-      tipo ENUM('contrato', 'otrosi') NOT NULL DEFAULT 'contrato',
+      tipo ENUM('contrato', 'otrosi', 'preaviso') NOT NULL DEFAULT 'contrato',
       descripcion VARCHAR(255) NULL,
       archivo_nombre VARCHAR(255) NOT NULL,
       archivo_path VARCHAR(500) NOT NULL,
+      fecha_inicio DATE NULL,
       fecha_firma DATE NULL,
       fecha_terminacion DATE NULL,
       subido_por INT NULL,
@@ -184,6 +185,49 @@ async function initializeDatabase() {
       INDEX idx_contrato_func (funcionario_id),
       INDEX idx_contrato_vence (fecha_terminacion),
       CONSTRAINT fk_contrato_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  try {
+    await conn.query(
+      `ALTER TABLE contratos
+       MODIFY COLUMN tipo ENUM('contrato', 'otrosi', 'preaviso') NOT NULL DEFAULT 'contrato'`
+    );
+  } catch (_) {
+    /* ya está actualizado o tabla nueva */
+  }
+
+  if (!(await columnExists(conn, dbName, 'contratos', 'fecha_inicio'))) {
+    await conn.query(
+      'ALTER TABLE contratos ADD COLUMN fecha_inicio DATE NULL AFTER archivo_path'
+    );
+    await conn.query(
+      `UPDATE contratos
+       SET fecha_inicio = fecha_firma
+       WHERE fecha_inicio IS NULL AND fecha_firma IS NOT NULL`
+    );
+    await conn.query(
+      `UPDATE contratos SET fecha_firma = NULL WHERE fecha_inicio IS NOT NULL`
+    );
+    console.log('✓ Contratos: fecha_inicio migrada desde la antigua fecha_firma');
+  }
+
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS vacaciones (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      tipo ENUM('disfrute', 'pago') NOT NULL,
+      dias DECIMAL(5,1) NOT NULL,
+      fecha_inicio DATE NULL,
+      fecha_fin DATE NULL,
+      fecha_registro DATE NOT NULL,
+      notas VARCHAR(255) NULL,
+      registrado_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_vac_func (funcionario_id),
+      INDEX idx_vac_fecha (fecha_registro),
+      CONSTRAINT fk_vac_funcionario
         FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);

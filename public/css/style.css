@@ -1063,6 +1063,11 @@ body {
   color: #047857;
 }
 
+.hv-missing-chip.is-info {
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
 .hv-missing-chip svg {
   width: 16px;
   height: 16px;
