@@ -259,6 +259,18 @@ async function vacacionesDe(id) {
   );
 }
 
+async function polizasDe(id) {
+  return db.query(
+    `SELECT p.id, p.descripcion, p.fecha_vencimiento, p.archivo_nombre, p.archivo_path, p.creado_en,
+            u.nombre AS subido_por_nombre
+     FROM polizas p
+     LEFT JOIN usuarios u ON u.id = p.subido_por
+     WHERE p.funcionario_id = ?
+     ORDER BY p.id DESC`,
+    [id]
+  );
+}
+
 async function proximaTerminacionContrato(id) {
   const rows = await db.query(
     `SELECT tipo, fecha_terminacion FROM contratos
@@ -441,11 +453,55 @@ router.patch('/funcionarios/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/funcionarios/:id/estado', requireAuth, async (req, res) => {
+router.patch('/funcionarios/:id/estado', requireAuth, (req, res, next) => {
+  const ct = String(req.headers['content-type'] || '');
+  if (ct.includes('multipart/form-data')) {
+    return upload.fields([
+      { name: 'paz_y_salvo', maxCount: 1 },
+      { name: 'liquidacion', maxCount: 1 }
+    ])(req, res, next);
+  }
+  next();
+}, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'Colaborador inválido' });
   const activo = Number(req.body?.activo) === 1 ? 1 : 0;
+  const paz = req.files?.paz_y_salvo?.[0];
+  const liquidacion = req.files?.liquidacion?.[0];
+
+  const limpiar = () => {
+    if (paz) fs.unlink(paz.path, () => {});
+    if (liquidacion) fs.unlink(liquidacion.path, () => {});
+  };
+
   try {
+    if (activo === 0) {
+      if (!paz || !liquidacion) {
+        limpiar();
+        return res.status(400).json({
+          error: 'Para inactivar adjunta el paz y salvo y la liquidación realizada'
+        });
+      }
+      const relPaz = storage.rutaRelativa(paz.path);
+      const relLiq = storage.rutaRelativa(liquidacion.path);
+      storage.copiarAEspejo(relPaz);
+      storage.copiarAEspejo(relLiq);
+      await db.execute(
+        `INSERT INTO documentos_adicionales
+          (funcionario_id, descripcion, archivo_nombre, archivo_path, subido_por)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, 'Paz y salvo (inactivación)', paz.originalname, relPaz, req.session.usuarioId]
+      );
+      await db.execute(
+        `INSERT INTO documentos_adicionales
+          (funcionario_id, descripcion, archivo_nombre, archivo_path, subido_por)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, 'Liquidación realizada (inactivación)', liquidacion.originalname, relLiq, req.session.usuarioId]
+      );
+    } else {
+      limpiar();
+    }
+
     const result = await db.execute(
       'UPDATE funcionarios SET activo = ? WHERE id = ?',
       [activo, id]
@@ -453,6 +509,7 @@ router.patch('/funcionarios/:id/estado', requireAuth, async (req, res) => {
     if (!result.affectedRows) return res.status(404).json({ error: 'Colaborador no encontrado' });
     res.json({ ok: true, id, activo });
   } catch (e) {
+    limpiar();
     res.status(500).json({ error: safeError(e) });
   }
 });
@@ -581,6 +638,7 @@ router.get('/funcionarios/:id', requireAuth, async (req, res) => {
     const cursos = await cursosDe(id);
     const adicionales = await adicionalesDe(id);
     const contratos = await contratosDe(id);
+    const polizas = await polizasDe(id);
     const vacacionesRows = await vacacionesDe(id);
     const requisitos = armarChecklist(funcionario.tipo_persona, docs, funcionario);
     const proxima_terminacion_contrato = elegirTerminacion(fechasTerminacionParaAlerta(contratos));
@@ -592,6 +650,7 @@ router.get('/funcionarios/:id', requireAuth, async (req, res) => {
     res.json({
       funcionario: presentarFuncionario(funcionario),
       cursos,
+      polizas,
       adicionales,
       contratos,
       vacaciones_movimientos: vacacionesRows,
@@ -808,6 +867,89 @@ router.delete('/funcionarios/:id/cursos/:cursoId', requireAuth, async (req, res)
     await db.execute('DELETE FROM cursos_certificados WHERE id = ? AND funcionario_id = ?', [cursoId, id]);
     storage.borrarArchivo(row.archivo_path);
     res.json({ ok: true, id: cursoId });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.post('/funcionarios/:id/polizas', requireAuth, (req, res) => {
+  upload.single('archivo')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'No se pudo subir el archivo' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Adjunta un PDF, JPG o PNG' });
+
+    const id = parseId(req.params.id);
+    const descripcion = clean(req.body?.descripcion, 200);
+    const fecha_vencimiento = fechaIso(req.body?.fecha_vencimiento);
+    if (!id) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Colaborador inválido' });
+    }
+    if (!descripcion) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Indica la descripción de la póliza' });
+    }
+    if (!fecha_vencimiento) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Indica la fecha de vencimiento' });
+    }
+
+    try {
+      const funcionario = await db.queryOne(
+        'SELECT id FROM funcionarios WHERE id = ? AND activo = 1',
+        [id]
+      );
+      if (!funcionario) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(404).json({ error: 'Colaborador no encontrado' });
+      }
+      const rel = storage.rutaRelativa(req.file.path);
+      storage.copiarAEspejo(rel);
+      const result = await db.execute(
+        `INSERT INTO polizas
+          (funcionario_id, descripcion, fecha_vencimiento, archivo_nombre, archivo_path, subido_por)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, descripcion, fecha_vencimiento, req.file.originalname, rel, req.session.usuarioId]
+      );
+      res.json({ ok: true, id: result.insertId });
+    } catch (e) {
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: safeError(e) });
+    }
+  });
+});
+
+router.delete('/funcionarios/:id/polizas/:polizaId', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  const polizaId = parseId(req.params.polizaId);
+  if (!id || !polizaId) return res.status(400).json({ error: 'Solicitud inválida' });
+  try {
+    const row = await db.queryOne(
+      'SELECT id, archivo_path FROM polizas WHERE id = ? AND funcionario_id = ?',
+      [polizaId, id]
+    );
+    if (!row) return res.status(404).json({ error: 'Póliza no encontrada' });
+    await db.execute('DELETE FROM polizas WHERE id = ? AND funcionario_id = ?', [polizaId, id]);
+    storage.borrarArchivo(row.archivo_path);
+    res.json({ ok: true, id: polizaId });
+  } catch (e) {
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.get('/funcionarios/:id/polizas/:polizaId/archivo', requireAuth, async (req, res) => {
+  const id = parseId(req.params.id);
+  const polizaId = parseId(req.params.polizaId);
+  try {
+    const row = await db.queryOne(
+      `SELECT archivo_path, archivo_nombre
+       FROM polizas
+       WHERE id = ? AND funcionario_id = ?`,
+      [polizaId, id]
+    );
+    if (!row) return res.status(404).json({ error: 'Póliza no encontrada' });
+    await servirArchivoRes(res, row, 'Póliza no encontrada');
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }

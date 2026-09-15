@@ -244,6 +244,17 @@
         <div id="hvCursosTabla" class="hv-table-wrap"></div>
       </section>
 
+      <section class="hv-panel" id="hvPanelPolizas">
+        <div class="hv-panel-head">
+          <div>
+            <h3 class="hv-section-title">Pólizas</h3>
+            <p class="hv-slots-sub">Registra cada póliza con su descripción y vencimiento (se conserva el historial).</p>
+          </div>
+          <button type="button" id="btnHvPolizaNuevo" class="btn-soft">Agregar póliza</button>
+        </div>
+        <div id="hvPolizasTabla" class="hv-table-wrap"></div>
+      </section>
+
       <section class="hv-panel" id="hvPanelExtras">
         <div class="hv-panel-head">
           <div>
@@ -511,9 +522,41 @@
     <form id="formHvInactivar" class="login-form">
       <h3 id="hvInactivarTitulo">Inactivar colaborador</h3>
       <p id="hvInactivarTexto" class="panel-lead"></p>
+      <div id="hvInactivarDocs" class="hidden">
+        <div class="form-group">
+          <label for="hvInactivarPaz">Paz y salvo</label>
+          <input id="hvInactivarPaz" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" />
+        </div>
+        <div class="form-group">
+          <label for="hvInactivarLiquidacion">Liquidación realizada</label>
+          <input id="hvInactivarLiquidacion" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" />
+        </div>
+        <p class="field-hint">Obligatorios para inactivar. Quedan guardados en la carpeta.</p>
+      </div>
       <div id="hvInactivarError" class="login-error hidden"></div>
       <button type="submit" id="btnHvInactivarOk" class="btn-login">Inactivar</button>
       <button type="button" id="btnHvInactivarCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHvPoliza" class="hv-dialog">
+    <form id="formHvPoliza" class="login-form">
+      <h3>Agregar póliza</h3>
+      <div class="form-group">
+        <label for="hvPolizaNombre">Descripción / tipo de póliza</label>
+        <input id="hvPolizaNombre" required maxlength="200" placeholder="Ej. Responsabilidad civil 2026" />
+      </div>
+      <div class="form-group">
+        <label for="hvPolizaVence">Fecha de vencimiento</label>
+        <input id="hvPolizaVence" type="date" required />
+      </div>
+      <div class="form-group">
+        <label for="hvPolizaArchivo">Archivo (PDF, JPG o PNG)</label>
+        <input id="hvPolizaArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required />
+      </div>
+      <div id="hvPolizaError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar</button>
+      <button type="button" id="btnHvPolizaCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
 
@@ -578,15 +621,15 @@
         <label for="hvContratoInicio">Fecha de inicio de contrato</label>
         <input id="hvContratoInicio" type="date" required />
       </div>
-      <div class="form-group">
-        <label for="hvContratoFirma">Fecha de firma</label>
-        <input id="hvContratoFirma" type="date" />
-        <p class="field-hint">Informativa; no reemplaza la fecha de inicio.</p>
-      </div>
       <div class="form-group" id="hvContratoFinGroup">
         <label for="hvContratoFin">Fecha de terminación</label>
         <input id="hvContratoFin" type="date" />
         <p class="field-hint">Se avisará 32 días antes (1 mes + 2 días) según la última vigencia.</p>
+      </div>
+      <div class="form-group">
+        <label for="hvContratoFirma">Fecha de firma</label>
+        <input id="hvContratoFirma" type="date" />
+        <p class="field-hint">Informativa; no reemplaza la fecha de inicio.</p>
       </div>
       <div class="form-group">
         <label for="hvContratoArchivo">Archivo</label>
@@ -691,22 +734,57 @@
         <input id="orgTareaFecha" type="date" />
         <p class="field-hint">Si no tiene fecha, vive en la lista de pendientes hasta que la completes.</p>
       </div>
+      <div class="form-group" id="orgTareaAvisoWrap">
+        <label for="orgTareaAviso">Aviso por correo</label>
+        <select id="orgTareaAviso" class="org-select-pill" style="width:100%;min-width:0;">
+          <option value="ninguno">Sin aviso por correo</option>
+          <option value="cada_2_horas">Cada 2 horas</option>
+          <option value="cada_4_horas">Cada 4 horas</option>
+          <option value="cada_8_horas">Cada 8 horas</option>
+          <option value="hora_fija">Diario a una hora fija</option>
+          <option value="diario">Diario</option>
+          <option value="cada_2_dias">Cada 2 días</option>
+          <option value="semanal">Cada semana</option>
+        </select>
+        <div class="form-group" id="orgTareaAvisoHoraWrap" style="margin:12px 0 0;display:none;">
+          <label for="orgTareaAvisoHora">Hora del aviso (Colombia)</label>
+          <select id="orgTareaAvisoHora" class="org-select-pill" style="width:100%;min-width:0;">
+            <option value="0">00:00</option>
+            <option value="1">01:00</option>
+            <option value="2">02:00</option>
+            <option value="3">03:00</option>
+            <option value="4">04:00</option>
+            <option value="5">05:00</option>
+            <option value="6">06:00</option>
+            <option value="7">07:00</option>
+            <option value="8">08:00</option>
+            <option value="9" selected>09:00</option>
+            <option value="10">10:00</option>
+            <option value="11">11:00</option>
+            <option value="12">12:00</option>
+            <option value="13">13:00</option>
+            <option value="14">14:00</option>
+            <option value="15">15:00</option>
+            <option value="16">16:00</option>
+            <option value="17">17:00</option>
+            <option value="18">18:00</option>
+            <option value="19">19:00</option>
+            <option value="20">20:00</option>
+            <option value="21">21:00</option>
+            <option value="22">22:00</option>
+            <option value="23">23:00</option>
+          </select>
+        </div>
+        <p class="field-hint">Mientras la tarea siga pendiente, se enviará un recordatorio a los correos de administración. En “Diario”, “Cada 2 días” y “Cada semana” también eliges la hora.</p>
+      </div>
       <div class="hv-flags" id="orgTareaFlags">
         <label class="hv-flag" for="orgTareaPrueba">
-          <input type="checkbox" id="orgTareaPrueba" />
-          <span class="hv-flag-box" aria-hidden="true"></span>
           <span class="hv-flag-text">
             <span class="hv-flag-name">Pedir prueba al completar</span>
             <span class="hv-flag-desc">Archivo o descripción de cómo se hizo</span>
           </span>
-        </label>
-        <label class="hv-flag" for="orgTareaTarde" id="orgTareaTardeWrap">
-          <input type="checkbox" id="orgTareaTarde" />
-          <span class="hv-flag-box" aria-hidden="true"></span>
-          <span class="hv-flag-text">
-            <span class="hv-flag-name">Recordar al mediodía</span>
-            <span class="hv-flag-desc">Correo a las 12:00 (hora Colombia) si sigue pendiente</span>
-          </span>
+          <input type="checkbox" id="orgTareaPrueba" role="switch" />
+          <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
         </label>
       </div>
       <div id="orgTareaError" class="login-error hidden"></div>
@@ -794,7 +872,7 @@
 
   <input id="hvFotoArchivo" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
 
-  <script src="/js/app.js" defer></script>
-  <script src="/js/organizador.js" defer></script>
+  <script src="/js/app.js?v=20260915b" defer></script>
+  <script src="/js/organizador.js?v=20260915b" defer></script>
 </body>
 </html>

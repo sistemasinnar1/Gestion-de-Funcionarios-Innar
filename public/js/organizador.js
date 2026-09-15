@@ -114,7 +114,13 @@
         <span class="org-pill">${escapeHtml(t.tematica_label || '')}</span>
         ${pillFecha(t)}
         ${Number(t.requiere_prueba) === 1 ? '<span class="org-pill">Pide prueba</span>' : ''}
-        ${Number(t.recordar_tarde) === 1 ? '<span class="org-pill">Aviso al mediodía</span>' : ''}
+        ${t.aviso_frecuencia && t.aviso_frecuencia !== 'ninguno'
+          ? `<span class="org-pill">Aviso ${escapeHtml(t.aviso_frecuencia_label || t.aviso_frecuencia)}${
+              AVISO_CON_HORA.has(t.aviso_frecuencia) && t.aviso_hora != null
+                ? ` ${String(t.aviso_hora).padStart(2, '0')}:00`
+                : ''
+            }</span>`
+          : ''}
       </div>
       <div class="org-task-actions">${acciones}</div>
       ${hijos}
@@ -221,6 +227,7 @@
         `<div class="org-obs">${escapeHtml(formatFecha(o.creado_en))} · ${escapeHtml(o.texto)}${o.creado_por_nombre ? ` — ${escapeHtml(o.creado_por_nombre)}` : ''}</div>`
       ).join('');
       const banco = e.fuente === 'banco';
+      const esTarea = e.fuente === 'tarea';
       return `<article class="org-agenda-card">
         <h5>${escapeHtml(e.titulo)}</h5>
         <div class="org-task-meta">
@@ -228,11 +235,12 @@
           <span class="org-pill ${e.fecha_estado === 'vencido' ? 'is-late' : (e.fecha_estado === 'por_vencer' ? 'is-soon' : '')}">${formatFecha(e.fecha)}</span>
           ${e.periodicidad && e.periodicidad !== 'ninguna' ? `<span class="org-pill">${escapeHtml(e.periodicidad_label)}</span>` : ''}
           ${banco ? '<span class="org-pill is-banco">Banco HV</span>' : ''}
+          ${esTarea ? '<span class="org-pill is-banco">Tarea</span>' : ''}
           ${e.ubicacion ? `<span class="org-pill">${escapeHtml(e.ubicacion)}</span>` : ''}
         </div>
         <p>${escapeHtml(e.detalle || '')}</p>
         ${obs}
-        ${banco ? '' : `<div class="org-task-actions">
+        ${banco || esTarea ? '' : `<div class="org-task-actions">
           <button type="button" data-org-obs="${e.id}">Observación</button>
           <button type="button" data-org-hecho="${e.id}">Marcar realizado</button>
           <button type="button" data-org-edit-ev="${e.id}">Editar</button>
@@ -259,12 +267,22 @@
     }
   }
 
+  const AVISO_CON_HORA = new Set(['hora_fija', 'diario', 'cada_2_dias', 'semanal']);
+
+  function syncAvisoHoraUi() {
+    const freq = $('orgTareaAviso')?.value || 'ninguno';
+    const wrap = $('orgTareaAvisoHoraWrap');
+    const padreId = $('orgTareaPadre')?.value;
+    const mostrar = !padreId && AVISO_CON_HORA.has(freq);
+    if (wrap) wrap.style.display = mostrar ? '' : 'none';
+  }
+
   function abrirTareaDlg({ padreId = '', edit = null } = {}) {
     $('formOrgTarea')?.reset();
     $('orgTareaId').value = edit?.id || '';
     $('orgTareaPadre').value = padreId || '';
     $('orgTareaTituloDlg').textContent = edit ? 'Editar tarea' : (padreId ? 'Subtarea' : 'Nueva tarea');
-    $('orgTareaTardeWrap')?.classList.toggle('hidden', Boolean(padreId));
+    $('orgTareaAvisoWrap')?.classList.toggle('hidden', Boolean(padreId));
     if (edit) {
       $('orgTareaNombre').value = edit.titulo || '';
       $('orgTareaDetalle').value = edit.detalle || '';
@@ -273,8 +291,19 @@
       $('orgTareaImportancia').value = String(edit.importancia || 2);
       $('orgTareaFecha').value = String(edit.fecha_cumplimiento || '').slice(0, 10);
       $('orgTareaPrueba').checked = Number(edit.requiere_prueba) === 1;
-      $('orgTareaTarde').checked = Number(edit.recordar_tarde) === 1;
+      if ($('orgTareaAviso')) {
+        $('orgTareaAviso').value = edit.aviso_frecuencia
+          || (Number(edit.recordar_tarde) === 1 ? 'diario' : 'ninguno');
+      }
+      if ($('orgTareaAvisoHora')) {
+        const hora = edit.aviso_hora != null ? Number(edit.aviso_hora) : 9;
+        $('orgTareaAvisoHora').value = String(Number.isFinite(hora) ? hora : 9);
+      }
+    } else if ($('orgTareaAviso')) {
+      $('orgTareaAviso').value = 'ninguno';
+      if ($('orgTareaAvisoHora')) $('orgTareaAvisoHora').value = '9';
     }
+    syncAvisoHoraUi();
     setError('orgTareaError', '');
     $('dlgOrgTarea').showModal();
   }
@@ -329,6 +358,7 @@
 
     $('btnOrgTareaNueva')?.addEventListener('click', () => abrirTareaDlg());
     $('btnOrgTareaCerrar')?.addEventListener('click', () => $('dlgOrgTarea')?.close());
+    $('orgTareaAviso')?.addEventListener('change', syncAvisoHoraUi);
     $('formOrgTarea')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       setError('orgTareaError', '');
@@ -341,7 +371,11 @@
         importancia: $('orgTareaImportancia').value,
         fecha_cumplimiento: $('orgTareaFecha').value || null,
         requiere_prueba: $('orgTareaPrueba').checked ? 1 : 0,
-        recordar_tarde: $('orgTareaTarde').checked ? 1 : 0,
+        recordar_tarde: ($('orgTareaAviso')?.value && $('orgTareaAviso').value !== 'ninguno') ? 1 : 0,
+        aviso_frecuencia: $('orgTareaAviso')?.value || 'ninguno',
+        aviso_hora: AVISO_CON_HORA.has($('orgTareaAviso')?.value)
+          ? Number($('orgTareaAvisoHora')?.value ?? 9)
+          : null,
         padre_id: $('orgTareaPadre').value || null
       };
       try {
@@ -436,6 +470,7 @@
       $('orgAgendaTituloDlg').textContent = 'Nuevo evento';
       $('orgAgendaAlerta').value = '30';
       $('orgAgendaPeriodo').value = 'ninguna';
+      if (diaSel && $('orgAgendaFecha')) $('orgAgendaFecha').value = diaSel;
       setError('orgAgendaFormError', '');
       $('dlgOrgAgenda').showModal();
     });
@@ -517,7 +552,7 @@
         $('orgAgendaTipo').value = ev.tipo || 'otro';
         $('orgAgendaUbicacion').value = ev.ubicacion || '';
         $('orgAgendaDetalle').value = ev.detalle || '';
-        $('orgAgendaFecha').value = String(ev.fecha || '').slice(0, 10);
+        $('orgAgendaFecha').value = String(ev.fecha_base || ev.fecha || '').slice(0, 10);
         $('orgAgendaPeriodo').value = ev.periodicidad || 'ninguna';
         $('orgAgendaAlerta').value = ev.alerta_dias || 30;
         $('dlgOrgAgenda').showModal();

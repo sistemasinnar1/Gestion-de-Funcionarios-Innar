@@ -48,10 +48,9 @@ const DOC_TYPES = [
   { id: 'rethus', label: 'RETHUS o tarjeta profesional', required: 'asistencial' },
   { id: 'carnet_vacunacion', label: 'Carnet de vacunación', required: 'asistencial' },
   { id: 'certificado_rcp', label: 'Certificado de reanimación cardiopulmonar (RCP)', required: 'flag:electrodiagnostico' },
-  { id: 'cursos_generales', label: 'Constancias y certificados de cursos', required: 'ambos', multiple: true },
   {
     id: 'constancias_trabajo',
-    label: 'Certificaciones / constancias laborales',
+    label: 'Experiencia laboral (certificaciones / constancias)',
     required: 'ambos',
     optional: true,
     multiple: true
@@ -114,14 +113,6 @@ const DOC_TYPES = [
     multiple: true,
     pideFecha: 'documento',
     labelFecha: 'Fecha del curso'
-  },
-  {
-    id: 'poliza_rc',
-    label: 'Póliza de responsabilidad civil',
-    required: 'ambos',
-    multiple: true,
-    pideFecha: 'vencimiento',
-    labelFecha: 'Fecha de vencimiento'
   },
   { id: 'rut', label: 'RUT', required: 'ambos' }
 ];
@@ -186,16 +177,12 @@ function hoyIsoLocal() {
 }
 
 /**
- * Elige la terminación vigente para alertas: la próxima futura;
- * si todas pasaron, la más reciente. Así las prórrogas (otrosíes)
- * anulan los vencimientos anteriores.
+ * Última vigencia contractual: la fecha de terminación más reciente
+ * entre contratos/otrosíes (las prórrogas anteriores quedan cubiertas).
  */
 function elegirTerminacion(fechas) {
   const ordenadas = (fechas || []).filter(Boolean).slice().sort();
   if (!ordenadas.length) return null;
-  const hoy = hoyIsoLocal();
-  const futura = ordenadas.find((f) => f >= hoy);
-  if (futura) return futura;
   return ordenadas[ordenadas.length - 1];
 }
 
@@ -205,6 +192,21 @@ function fechasTerminacionParaAlerta(contratosRows) {
     .filter((c) => c && c.tipo !== 'preaviso')
     .map((c) => fechaIso(c.fecha_terminacion))
     .filter(Boolean);
+}
+
+function fechaIso(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  const raw = String(value || '').trim();
+  const iso = raw.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const dmy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return null;
 }
 
 function addMonths(iso, months) {
@@ -224,11 +226,6 @@ function addDays(iso, days) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function fechaIso(value) {
-  const raw = String(value || '').trim().slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
 function daysUntil(iso) {
@@ -332,7 +329,8 @@ function progresoDe(checklist, extras = {}) {
     vencidos,
     por_vencer,
     examen_estado: examenEstado,
-    contrato_estado: contratoEstado
+    contrato_estado: contratoEstado,
+    proxima_terminacion_contrato: extras.proxima_terminacion_contrato || null
   };
 }
 

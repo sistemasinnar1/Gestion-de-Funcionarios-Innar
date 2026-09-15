@@ -21,21 +21,25 @@ async function eventosDesdeBanco() {
     );
     personas.forEach((p) => {
       const nombre = nombreDe(p);
+      // Solo alertar examen cuando está vencido o por vencer (no saturar con próximos lejanos de ingresos nuevos).
       if (p.forma_vinculacion === 'contrato_trabajo' && p.proximo_examen_medico) {
         const fecha = fechaIso(p.proximo_examen_medico);
-        items.push({
-          id: `banco-examen-${p.id}`,
-          fuente: 'banco',
-          tipo: 'otro',
-          tipo_label: 'Examen médico ocupacional',
-          titulo: `Examen periódico — ${nombre}`,
-          detalle: 'Viene del banco de hojas de vida',
-          fecha,
-          periodicidad: 'ninguna',
-          alerta_dias: ALERTA_DIAS,
-          fecha_estado: estadoFecha(fecha, ALERTA_DIAS),
-          editable: false
-        });
+        const st = estadoFecha(fecha, ALERTA_DIAS);
+        if (st === 'vencido' || st === 'por_vencer') {
+          items.push({
+            id: `banco-examen-${p.id}`,
+            fuente: 'banco',
+            tipo: 'otro',
+            tipo_label: 'Examen médico ocupacional',
+            titulo: `Examen periódico — ${nombre}`,
+            detalle: 'Viene del banco de hojas de vida',
+            fecha,
+            periodicidad: 'ninguna',
+            alerta_dias: ALERTA_DIAS,
+            fecha_estado: st,
+            editable: false
+          });
+        }
       }
       const nac = fechaIso(p.fecha_nacimiento);
       if (nac) {
@@ -84,10 +88,10 @@ async function eventosDesdeBanco() {
       const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(lista));
       if (!ultimaFin) return;
       const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
-      if (st !== 'vencido' && st !== 'por_vencer') return;
       const c = lista
         .filter((row) => row.tipo !== 'preaviso' && fechaIso(row.fecha_terminacion) === ultimaFin)
         .sort((a, b) => Number(b.id) - Number(a.id))[0] || lista[0];
+      // Igual que el examen: siempre aparece la fecha de terminación vigente.
       items.push({
         id: `banco-contrato-${fid}`,
         fuente: 'banco',
@@ -98,7 +102,7 @@ async function eventosDesdeBanco() {
         fecha: ultimaFin,
         periodicidad: 'ninguna',
         alerta_dias: CONTRATO_ALERTA_DIAS,
-        fecha_estado: st,
+        fecha_estado: st || 'vigente',
         editable: false
       });
     });
@@ -120,19 +124,49 @@ async function eventosDesdeBanco() {
       const st = estadoFecha(fecha, ALERTA_DIAS);
       if (st !== 'vencido' && st !== 'por_vencer') return;
       const labels = {
-        poliza_rc: 'Póliza de responsabilidad civil',
         curso_violencia_sexual: 'Curso de violencia sexual',
         curso_soporte_vital: 'Soporte vital',
         curso_duelo: 'Gestión de duelo',
         curso_telemedicina: 'Telemedicina'
       };
+      if (!labels[d.tipo]) return;
       items.push({
         id: `banco-doc-${d.funcionario_id}-${d.tipo}`,
         fuente: 'banco',
         tipo: 'otro',
-        tipo_label: labels[d.tipo] || 'Documento del personal',
-        titulo: `${labels[d.tipo] || d.tipo} — ${nombreDe(d)}`,
+        tipo_label: labels[d.tipo],
+        titulo: `${labels[d.tipo]} — ${nombreDe(d)}`,
         detalle: d.archivo_nombre || 'Vigencia actual (historiales anteriores no se alertan)',
+        fecha,
+        periodicidad: 'ninguna',
+        alerta_dias: ALERTA_DIAS,
+        fecha_estado: st,
+        editable: false
+      });
+    });
+
+    const polizas = await db.query(
+      `SELECT p.id, p.funcionario_id, p.descripcion, p.fecha_vencimiento, p.archivo_nombre, f.nombres, f.apellidos
+       FROM polizas p
+       INNER JOIN funcionarios f ON f.id = p.funcionario_id
+       WHERE f.activo = 1 AND p.fecha_vencimiento IS NOT NULL
+       ORDER BY p.id DESC`
+    );
+    const latestPoliza = {};
+    polizas.forEach((p) => {
+      if (!latestPoliza[p.funcionario_id]) latestPoliza[p.funcionario_id] = p;
+    });
+    Object.values(latestPoliza).forEach((p) => {
+      const fecha = fechaIso(p.fecha_vencimiento);
+      const st = estadoFecha(fecha, ALERTA_DIAS);
+      if (st !== 'vencido' && st !== 'por_vencer') return;
+      items.push({
+        id: `banco-poliza-${p.funcionario_id}`,
+        fuente: 'banco',
+        tipo: 'otro',
+        tipo_label: 'Póliza',
+        titulo: `Póliza — ${nombreDe(p)}`,
+        detalle: p.descripcion || p.archivo_nombre || 'Última póliza registrada',
         fecha,
         periodicidad: 'ninguna',
         alerta_dias: ALERTA_DIAS,

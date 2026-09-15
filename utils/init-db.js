@@ -233,6 +233,55 @@ async function initializeDatabase() {
   `);
 
   await conn.query(`
+    CREATE TABLE IF NOT EXISTS polizas (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      funcionario_id INT NOT NULL,
+      descripcion VARCHAR(200) NOT NULL,
+      fecha_vencimiento DATE NULL,
+      archivo_nombre VARCHAR(255) NOT NULL,
+      archivo_path VARCHAR(500) NOT NULL,
+      subido_por INT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_poliza_func (funcionario_id),
+      INDEX idx_poliza_vence (fecha_vencimiento),
+      CONSTRAINT fk_poliza_funcionario
+        FOREIGN KEY (funcionario_id) REFERENCES funcionarios(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Migrar pólizas legacy del slot documentos → panel polizas (una sola vez por archivo).
+  try {
+    const [legacy] = await conn.query(
+      `SELECT d.funcionario_id, d.archivo_nombre, d.archivo_path, d.fecha_vencimiento, d.subido_por
+       FROM documentos d
+       WHERE d.tipo = 'poliza_rc'
+         AND NOT EXISTS (
+           SELECT 1 FROM polizas p
+           WHERE p.funcionario_id = d.funcionario_id AND p.archivo_path = d.archivo_path
+         )`
+    );
+    for (const row of legacy) {
+      await conn.execute(
+        `INSERT INTO polizas (funcionario_id, descripcion, fecha_vencimiento, archivo_nombre, archivo_path, subido_por)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          row.funcionario_id,
+          'Póliza de responsabilidad civil',
+          row.fecha_vencimiento,
+          row.archivo_nombre,
+          row.archivo_path,
+          row.subido_por
+        ]
+      );
+    }
+    if (legacy.length) {
+      console.log(`✓ ${legacy.length} póliza(s) migrada(s) al registro de pólizas`);
+    }
+  } catch (_) {
+    /* tabla recién creada o sin docs legacy */
+  }
+
+  await conn.query(`
     CREATE TABLE IF NOT EXISTS hojas_vida (
       id INT AUTO_INCREMENT PRIMARY KEY,
       funcionario_id INT NOT NULL,
@@ -296,6 +345,12 @@ async function initializeDatabase() {
       fecha_cumplimiento DATE NULL,
       requiere_prueba TINYINT(1) NOT NULL DEFAULT 0,
       recordar_tarde TINYINT(1) NOT NULL DEFAULT 0,
+      aviso_frecuencia ENUM(
+        'ninguno', 'cada_2_horas', 'cada_4_horas', 'cada_8_horas',
+        'hora_fija', 'diario', 'cada_2_dias', 'semanal'
+      ) NOT NULL DEFAULT 'ninguno',
+      aviso_hora TINYINT NULL,
+      ultimo_aviso_en DATETIME NULL,
       estado ENUM('pendiente', 'completada') NOT NULL DEFAULT 'pendiente',
       completada_en DATETIME NULL,
       completada_por INT NULL,
@@ -312,6 +367,44 @@ async function initializeDatabase() {
         FOREIGN KEY (padre_id) REFERENCES org_tareas(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  if (!(await columnExists(conn, dbName, 'org_tareas', 'aviso_frecuencia'))) {
+    await conn.query(
+      `ALTER TABLE org_tareas
+       ADD COLUMN aviso_frecuencia ENUM(
+         'ninguno', 'cada_2_horas', 'cada_4_horas', 'cada_8_horas',
+         'hora_fija', 'diario', 'cada_2_dias', 'semanal'
+       ) NOT NULL DEFAULT 'ninguno' AFTER recordar_tarde`
+    );
+    await conn.query(
+      `UPDATE org_tareas SET aviso_frecuencia = 'diario' WHERE recordar_tarde = 1`
+    );
+    console.log('✓ org_tareas: aviso_frecuencia');
+  } else {
+    await conn.query(
+      `ALTER TABLE org_tareas
+       MODIFY COLUMN aviso_frecuencia ENUM(
+         'ninguno', 'cada_2_horas', 'cada_4_horas', 'cada_8_horas',
+         'hora_fija', 'diario', 'cada_2_dias', 'semanal'
+       ) NOT NULL DEFAULT 'ninguno'`
+    );
+  }
+  if (!(await columnExists(conn, dbName, 'org_tareas', 'aviso_hora'))) {
+    await conn.query(
+      'ALTER TABLE org_tareas ADD COLUMN aviso_hora TINYINT NULL AFTER aviso_frecuencia'
+    );
+    console.log('✓ org_tareas: aviso_hora');
+  }
+  if (!(await columnExists(conn, dbName, 'org_tareas', 'ultimo_aviso_en'))) {
+    await conn.query(
+      'ALTER TABLE org_tareas ADD COLUMN ultimo_aviso_en DATETIME NULL AFTER aviso_hora'
+    );
+    console.log('✓ org_tareas: ultimo_aviso_en');
+  } else {
+    await conn.query(
+      'ALTER TABLE org_tareas MODIFY COLUMN ultimo_aviso_en DATETIME NULL'
+    );
+  }
 
   await conn.query(`
     CREATE TABLE IF NOT EXISTS org_agenda (

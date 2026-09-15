@@ -3,7 +3,8 @@ const logger = require('./logger');
 const mailer = require('./mailer');
 const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, estadoFecha, elegirTerminacion, fechasTerminacionParaAlerta } = require('./documentos-catalogo');
 const { eventosDesdeBanco } = require('./organizador-banco');
-const { enriquecerEvento, TEMATICAS } = require('./organizador-catalogo');
+const { enriquecerEvento, TEMATICAS, diasAvisoFrecuencia, horasAvisoFrecuencia, avisoHoraValida, avisoUsaHoraFija } = require('./organizador-catalogo');
+const { fechaIso } = require('./documentos-catalogo');
 
 const JOB_KEY = 'alertas_digest_dia';
 
@@ -156,6 +157,13 @@ async function recogerAlertas() {
      WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
     ids
   );
+  const polizasRows = await db.query(
+    `SELECT id, funcionario_id, descripcion, fecha_vencimiento
+     FROM polizas
+     WHERE funcionario_id IN (${placeholders}) AND fecha_vencimiento IS NOT NULL
+     ORDER BY id DESC`,
+    ids
+  );
   const byPerson = {};
   docs.forEach((d) => {
     if (!byPerson[d.funcionario_id]) byPerson[d.funcionario_id] = [];
@@ -165,6 +173,10 @@ async function recogerAlertas() {
   contratosRows.forEach((c) => {
     if (!contratosBy[c.funcionario_id]) contratosBy[c.funcionario_id] = [];
     contratosBy[c.funcionario_id].push(c);
+  });
+  const polizaBy = {};
+  polizasRows.forEach((p) => {
+    if (!polizaBy[p.funcionario_id]) polizaBy[p.funcionario_id] = p;
   });
 
   const vencidos = [];
@@ -192,6 +204,20 @@ async function recogerAlertas() {
       if (item.estado === 'vencido') vencidos.push(row);
       else porVencer.push(row);
     });
+    const pol = polizaBy[p.id];
+    if (pol) {
+      const st = estadoFecha(pol.fecha_vencimiento, ALERTA_DIAS);
+      if (st === 'vencido' || st === 'por_vencer') {
+        const row = {
+          persona,
+          documento: p.documento,
+          requisito: pol.descripcion || 'Póliza',
+          vence: formatFecha(pol.fecha_vencimiento)
+        };
+        if (st === 'vencido') vencidos.push(row);
+        else porVencer.push(row);
+      }
+    }
     const examRequerido = p.forma_vinculacion === 'contrato_trabajo';
     const examEstado = examRequerido
       ? estadoFecha(p.proximo_examen_medico, ALERTA_DIAS)
@@ -396,64 +422,151 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
   }
 }
 
-function horaEnBogota() {
+function horaEnBogota(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Bogota',
     hour: 'numeric',
     hour12: false
-  }).formatToParts(new Date());
+  }).formatToParts(date);
   return Number(parts.find((p) => p.type === 'hour')?.value);
+}
+
+function fechaEnBogota(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function parseFechaHora(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function tareaDebeAvisar(t, { forzar = false, ahora = new Date(), hoy = fechaEnBogota(), horaDefault = 12 } = {}) {
+  const freq = t.aviso_frecuencia && t.aviso_frecuencia !== 'ninguno'
+    ? t.aviso_frecuencia
+    : (Number(t.recordar_tarde) === 1 ? 'diario' : 'ninguno');
+  if (freq === 'ninguno') return false;
+
+  const ultimo = parseFechaHora(t.ultimo_aviso_en);
+  const horas = horasAvisoFrecuencia(freq);
+  if (horas) {
+    if (forzar || !ultimo) return true;
+    return ((ahora.getTime() - ultimo.getTime()) / 3600000) >= horas;
+  }
+
+  if (freq === 'hora_fija' || avisoUsaHoraFija(freq)) {
+    const h = avisoHoraValida(t.aviso_hora);
+    const horaObjetivo = h != null ? h : (freq === 'hora_fija' ? null : horaDefault);
+    if (horaObjetivo == null) return false;
+    if (!forzar && horaEnBogota(ahora) !== horaObjetivo) return false;
+    if (freq === 'hora_fija' || freq === 'diario') {
+      if (!forzar && ultimo && fechaEnBogota(ultimo) === hoy) return false;
+      return true;
+    }
+    const cada = diasAvisoFrecuencia(freq);
+    if (!cada) return false;
+    if (!ultimo) return true;
+    const ultimoDia = fechaEnBogota(ultimo);
+    const [y1, m1, d1] = ultimoDia.split('-').map(Number);
+    const [y2, m2, d2] = hoy.split('-').map(Number);
+    const a = Date.UTC(y1, m1 - 1, d1);
+    const b = Date.UTC(y2, m2 - 1, d2);
+    const dias = Math.round((b - a) / 86400000);
+    return dias >= cada;
+  }
+
+  return false;
 }
 
 async function enviarRecordatorioTarde({ forzar = false } = {}) {
   if (!mailer.isConfigured()) return { ok: false, reason: 'smtp_no_configurado' };
-  const hora = Number(process.env.ORG_HORA_TARDE || 12);
-  if (!forzar && horaEnBogota() !== hora) {
-    return { ok: true, skipped: true, reason: 'fuera_de_hora' };
-  }
+  const horaDefault = Number(process.env.ORG_HORA_TARDE || 12);
+  const ahora = new Date();
+  const hoy = fechaEnBogota(ahora);
   try {
-    const row = await db.queryOne('SELECT valor FROM jobs_estado WHERE clave = ?', ['org_recordatorio_tarde']);
-    if (!forzar && row?.valor === hoyIso()) {
-      return { ok: true, skipped: true, reason: 'ya_enviado_hoy' };
-    }
     const tareas = await db.query(
-      `SELECT titulo, tematica, fecha_cumplimiento
+      `SELECT id, titulo, tematica, fecha_cumplimiento, aviso_frecuencia, aviso_hora,
+              recordar_tarde, ultimo_aviso_en
        FROM org_tareas
-       WHERE estado = 'pendiente' AND padre_id IS NULL AND recordar_tarde = 1
+       WHERE estado = 'pendiente' AND padre_id IS NULL
+         AND (
+           aviso_frecuencia IN (
+             'cada_2_horas', 'cada_4_horas', 'cada_8_horas', 'hora_fija',
+             'diario', 'cada_2_dias', 'semanal'
+           )
+           OR recordar_tarde = 1
+         )
        ORDER BY urgencia DESC, importancia DESC`
     );
-    if (!tareas.length) return { ok: true, skipped: true, reason: 'sin_tareas' };
+
+    const pendientesAviso = tareas.filter((t) =>
+      tareaDebeAvisar(t, { forzar, ahora, hoy, horaDefault })
+    );
+
+    if (!pendientesAviso.length) {
+      return { ok: true, skipped: true, reason: 'sin_tareas' };
+    }
+
     const destinos = await destinatarios();
     if (!destinos.length) return { ok: false, reason: 'sin_destinatarios' };
+
     const text = [
-      'Recordatorio de la tarde — INNAR Gestión',
+      'Recordatorio de tareas — INNAR Gestión',
       '',
-      'Estas tareas siguen pendientes para esta tarde:',
-      ...tareas.map((t) => `- ${t.titulo}${t.fecha_cumplimiento ? ` (fecha ${formatFecha(t.fecha_cumplimiento)})` : ''}`)
+      'Estas tareas siguen pendientes y tienen aviso periódico activado:',
+      ...pendientesAviso.map((t) => {
+        const freq = t.aviso_frecuencia && t.aviso_frecuencia !== 'ninguno'
+          ? t.aviso_frecuencia
+          : 'diario';
+        const fecha = t.fecha_cumplimiento ? ` (fecha ${formatFecha(t.fecha_cumplimiento)})` : '';
+        const hora = freq === 'hora_fija' && avisoHoraValida(t.aviso_hora) != null
+          ? ` · ${String(avisoHoraValida(t.aviso_hora)).padStart(2, '0')}:00`
+          : '';
+        return `- ${t.titulo}${fecha} · aviso ${freq}${hora}`;
+      })
     ].join('\n');
-    const html = `<p>Estas tareas siguen pendientes para esta tarde:</p><ul>${
-      tareas.map((t) => `<li><strong>${escapeHtml(t.titulo)}</strong></li>`).join('')
-    }</ul>`;
+
+    const html = `<!doctype html>
+<html lang="es"><body style="font-family:Segoe UI,Roboto,sans-serif;color:#1f2937;">
+  <p>Estas tareas siguen pendientes y tienen <strong>aviso periódico</strong> activado:</p>
+  <ul>${pendientesAviso.map((t) => {
+    const fecha = t.fecha_cumplimiento ? ` · fecha ${escapeHtml(formatFecha(t.fecha_cumplimiento))}` : '';
+    return `<li><strong>${escapeHtml(t.titulo)}</strong>${fecha}</li>`;
+  }).join('')}</ul>
+  <p style="color:#64748b;font-size:13px;">Instituto Neurociencias de Nariño IPS S.A.S</p>
+</body></html>`;
+
     let enviados = 0;
     for (const dest of destinos) {
       const result = await mailer.sendMail({
         to: dest.email,
-        subject: `INNAR Gestión — ${tareas.length} pendiente(s) para esta tarde`,
+        subject: `INNAR Gestión — ${pendientesAviso.length} tarea(s) con aviso periódico`,
         text,
         html
       });
       if (result.sent) enviados += 1;
     }
     if (enviados > 0) {
+      const ids = pendientesAviso.map((t) => t.id);
+      const ph = ids.map(() => '?').join(',');
+      const stamp = ahora.toISOString().slice(0, 19).replace('T', ' ');
       await db.execute(
-        `INSERT INTO jobs_estado (clave, valor) VALUES ('org_recordatorio_tarde', ?)
-         ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
-        [hoyIso()]
+        `UPDATE org_tareas SET ultimo_aviso_en = ? WHERE id IN (${ph})`,
+        [stamp, ...ids]
       );
     }
-    return { ok: enviados > 0, enviados };
+    return { ok: enviados > 0, enviados, tareas: pendientesAviso.length };
   } catch (err) {
-    logger.error('[ALERTAS] Recordatorio de tarde falló', { message: err.message });
+    logger.error('[ALERTAS] Recordatorio de tareas falló', { message: err.message });
     return { ok: false, error: err.message };
   }
 }

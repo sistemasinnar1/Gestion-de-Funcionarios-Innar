@@ -36,6 +36,46 @@ const PERIODICIDADES = {
   anual: 'Cada año'
 };
 
+const AVISO_FRECUENCIAS = {
+  ninguno: 'Sin aviso por correo',
+  cada_2_horas: 'Cada 2 horas',
+  cada_4_horas: 'Cada 4 horas',
+  cada_8_horas: 'Cada 8 horas',
+  hora_fija: 'Diario a una hora fija',
+  diario: 'Diario',
+  cada_2_dias: 'Cada 2 días',
+  semanal: 'Cada semana'
+};
+
+const AVISO_FRECUENCIAS_ENUM = Object.keys(AVISO_FRECUENCIAS);
+
+function avisoFrecuenciaValida(value) {
+  return Boolean(AVISO_FRECUENCIAS[value]);
+}
+
+function horasAvisoFrecuencia(value) {
+  if (value === 'cada_2_horas') return 2;
+  if (value === 'cada_4_horas') return 4;
+  if (value === 'cada_8_horas') return 8;
+  return 0;
+}
+
+function diasAvisoFrecuencia(value) {
+  if (value === 'diario') return 1;
+  if (value === 'cada_2_dias') return 2;
+  if (value === 'semanal') return 7;
+  return 0;
+}
+
+function avisoHoraValida(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+}
+
+function avisoUsaHoraFija(value) {
+  return value === 'hora_fija' || value === 'diario' || value === 'cada_2_dias' || value === 'semanal';
+}
+
 function tematicaValida(value) {
   return Boolean(TEMATICAS[value]);
 }
@@ -109,6 +149,9 @@ function enriquecerTarea(row) {
   const q = cuadrante(urgencia, importancia);
   const fecha = fechaIso(row.fecha_cumplimiento);
   const stFecha = fecha ? estadoFecha(fecha, ALERTA_DIAS) : 'sin_fecha';
+  const aviso = avisoFrecuenciaValida(row.aviso_frecuencia)
+    ? row.aviso_frecuencia
+    : (Number(row.recordar_tarde) === 1 ? 'diario' : 'ninguno');
   return {
     ...row,
     urgencia,
@@ -119,7 +162,10 @@ function enriquecerTarea(row) {
     cuadrante: q.id,
     cuadrante_label: q.label,
     fecha_cumplimiento: fecha,
-    fecha_estado: stFecha
+    fecha_estado: stFecha,
+    aviso_frecuencia: aviso,
+    aviso_frecuencia_label: AVISO_FRECUENCIAS[aviso] || AVISO_FRECUENCIAS.ninguno,
+    aviso_hora: avisoUsaHoraFija(aviso) ? (avisoHoraValida(row.aviso_hora) ?? 12) : null
   };
 }
 
@@ -131,7 +177,7 @@ function enriquecerEvento(row, hoy) {
   const ancla = fechaIso(row.fecha);
   const fecha = periodicidad === 'ninguna'
     ? ancla
-    : (ancla && ancla >= today ? ancla : ancla);
+    : avanzarHastaFuturo(ancla, periodicidad, today);
   const st = fecha ? estadoFecha(fecha, alerta) : 'sin_fecha';
   return {
     ...row,
@@ -141,8 +187,9 @@ function enriquecerEvento(row, hoy) {
     periodicidad_label: PERIODICIDADES[periodicidad],
     alerta_dias: alerta,
     fecha,
+    fecha_base: ancla,
     fecha_estado: st,
-    editable: row.fuente !== 'banco'
+    editable: row.fuente !== 'banco' && row.fuente !== 'tarea'
   };
 }
 
@@ -151,11 +198,18 @@ module.exports = {
   NIVELES,
   TIPOS_AGENDA,
   PERIODICIDADES,
+  AVISO_FRECUENCIAS,
+  AVISO_FRECUENCIAS_ENUM,
   ALERTA_DIAS,
   CONTRATO_ALERTA_DIAS,
   tematicaValida,
   tipoAgendaValido,
   periodicidadValida,
+  avisoFrecuenciaValida,
+  horasAvisoFrecuencia,
+  diasAvisoFrecuencia,
+  avisoHoraValida,
+  avisoUsaHoraFija,
   nivel,
   cuadrante,
   addPeriodo,

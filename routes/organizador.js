@@ -11,9 +11,13 @@ const {
   NIVELES,
   TIPOS_AGENDA,
   PERIODICIDADES,
+  AVISO_FRECUENCIAS,
   tematicaValida,
   tipoAgendaValido,
   periodicidadValida,
+  avisoFrecuenciaValida,
+  avisoHoraValida,
+  avisoUsaHoraFija,
   nivel,
   addPeriodo,
   enriquecerTarea,
@@ -21,6 +25,7 @@ const {
   fechaIso
 } = require('../utils/organizador-catalogo');
 const { eventosDesdeBanco } = require('../utils/organizador-banco');
+const { estadoFecha, ALERTA_DIAS } = require('../utils/documentos-catalogo');
 
 storage.ensureDirs();
 
@@ -95,6 +100,22 @@ function payloadTarea(body, { partial = false } = {}) {
   }
   if (!partial || body.requiere_prueba != null) campos.requiere_prueba = flag01(body?.requiere_prueba);
   if (!partial || body.recordar_tarde != null) campos.recordar_tarde = flag01(body?.recordar_tarde);
+  if (!partial || body.aviso_frecuencia != null) {
+    const freq = clean(body?.aviso_frecuencia, 30) || 'ninguno';
+    campos.aviso_frecuencia = avisoFrecuenciaValida(freq) ? freq : 'ninguno';
+    if (campos.aviso_frecuencia !== 'ninguno') campos.recordar_tarde = 1;
+    else if (body.recordar_tarde == null) campos.recordar_tarde = 0;
+  }
+  if (!partial || body.aviso_hora != null || body.aviso_frecuencia != null) {
+    const freq = campos.aviso_frecuencia
+      || (avisoFrecuenciaValida(body?.aviso_frecuencia) ? body.aviso_frecuencia : null);
+    if (avisoUsaHoraFija(freq)) {
+      const hora = avisoHoraValida(body?.aviso_hora);
+      campos.aviso_hora = hora != null ? hora : 12;
+    } else if (freq) {
+      campos.aviso_hora = null;
+    }
+  }
   return { campos };
 }
 
@@ -118,7 +139,8 @@ router.get('/organizador/catalogo', requireAuth, (_req, res) => {
     tipos_agenda: Object.fromEntries(
       Object.entries(TIPOS_AGENDA).map(([id, t]) => [id, t.label])
     ),
-    periodicidades: PERIODICIDADES
+    periodicidades: PERIODICIDADES,
+    aviso_frecuencias: AVISO_FRECUENCIAS
   });
 });
 
@@ -228,8 +250,8 @@ router.post('/organizador/tareas', requireAuth, async (req, res) => {
     const result = await db.execute(
       `INSERT INTO org_tareas
         (padre_id, titulo, detalle, tematica, urgencia, importancia, fecha_cumplimiento,
-         requiere_prueba, recordar_tarde, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         requiere_prueba, recordar_tarde, aviso_frecuencia, aviso_hora, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         padreId,
         c.titulo,
@@ -239,7 +261,9 @@ router.post('/organizador/tareas', requireAuth, async (req, res) => {
         c.importancia,
         c.fecha_cumplimiento,
         padreId ? c.requiere_prueba : c.requiere_prueba,
-        padreId ? 0 : c.recordar_tarde,
+        padreId ? 0 : (c.recordar_tarde || 0),
+        padreId ? 'ninguno' : (c.aviso_frecuencia || 'ninguno'),
+        padreId ? null : (c.aviso_hora ?? null),
         usuarioId(req) || null
       ]
     );
@@ -271,7 +295,9 @@ router.patch('/organizador/tareas/:id', requireAuth, async (req, res) => {
          importancia = COALESCE(?, importancia),
          fecha_cumplimiento = ?,
          requiere_prueba = COALESCE(?, requiere_prueba),
-         recordar_tarde = COALESCE(?, recordar_tarde)
+         recordar_tarde = COALESCE(?, recordar_tarde),
+         aviso_frecuencia = COALESCE(?, aviso_frecuencia),
+         aviso_hora = ?
        WHERE id = ?`,
       [
         c.titulo || null,
@@ -281,7 +307,11 @@ router.patch('/organizador/tareas/:id', requireAuth, async (req, res) => {
         c.importancia || null,
         c.fecha_cumplimiento !== undefined ? c.fecha_cumplimiento : row.fecha_cumplimiento,
         c.requiere_prueba,
-        row.padre_id ? 0 : c.recordar_tarde,
+        row.padre_id ? 0 : (c.recordar_tarde != null ? c.recordar_tarde : row.recordar_tarde),
+        row.padre_id ? 'ninguno' : (c.aviso_frecuencia || null),
+        row.padre_id
+          ? null
+          : (c.aviso_hora !== undefined ? c.aviso_hora : row.aviso_hora),
         id
       ]
     );
@@ -416,7 +446,29 @@ router.get('/organizador/agenda', requireAuth, async (req, res) => {
       return ev;
     });
     const banco = incluirBanco ? await eventosDesdeBanco() : [];
-    const lista = [...propios, ...banco].sort((a, b) => String(a.fecha || '9999').localeCompare(String(b.fecha || '9999')));
+    const tareas = await db.query(
+      `SELECT id, titulo, detalle, tematica, fecha_cumplimiento, urgencia, importancia
+       FROM org_tareas
+       WHERE estado = 'pendiente' AND padre_id IS NULL AND fecha_cumplimiento IS NOT NULL`
+    );
+    const desdeTareas = tareas.map((t) => {
+      const fecha = String(t.fecha_cumplimiento || '').slice(0, 10);
+      return {
+        id: `tarea-${t.id}`,
+        fuente: 'tarea',
+        tipo: 'otro',
+        tipo_label: TEMATICAS[t.tematica] || t.tematica || 'Tarea',
+        titulo: t.titulo,
+        detalle: t.detalle || 'Tarea pendiente del organizador',
+        fecha,
+        periodicidad: 'ninguna',
+        alerta_dias: ALERTA_DIAS,
+        fecha_estado: estadoFecha(fecha, ALERTA_DIAS),
+        editable: false,
+        tarea_id: t.id
+      };
+    });
+    const lista = [...propios, ...banco, ...desdeTareas].sort((a, b) => String(a.fecha || '9999').localeCompare(String(b.fecha || '9999')));
     res.json(lista);
   } catch (e) {
     res.status(500).json({ error: safeError(e) });

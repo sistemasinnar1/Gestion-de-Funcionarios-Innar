@@ -316,9 +316,9 @@ const HV_GRUPOS = [
   { label: 'Identificación', tipos: ['hoja_vida', 'cedula', 'autorizacion_datos'] },
   { label: 'Formación', tipos: ['titulo_bachiller', 'acta_bachiller', 'titulo_profesional', 'acta_profesional', 'rethus'] },
   { label: 'Salud ocupacional y afiliaciones', tipos: ['examen_medico', 'recomendaciones_medico', 'afiliacion_salud', 'afiliacion_pension', 'afiliacion_arl', 'carnet_vacunacion', 'certificado_rcp'] },
-  { label: 'Cursos y experiencia', tipos: ['cursos_generales', 'constancias_trabajo'] },
+  { label: 'Experiencia laboral', tipos: ['constancias_trabajo'] },
   { label: 'Cursos de 2 años', tipos: ['curso_violencia_sexual', 'curso_soporte_vital', 'curso_duelo', 'curso_telemedicina'] },
-  { label: 'Contratación', tipos: ['poliza_rc', 'rut'] }
+  { label: 'Contratación', tipos: ['rut'] }
 ];
 
 const ICON_FILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M14 3v6h6"/></svg>';
@@ -719,6 +719,28 @@ function renderCursos(lista, readOnly) {
     </tr>`).join('')}</tbody></table>`;
 }
 
+function renderPolizas(lista, readOnly) {
+  const el = $('hvPolizasTabla');
+  if (!el) return;
+  const rows = lista || [];
+  if (!rows.length) {
+    el.innerHTML = '<p class="hv-empty-table">Aún no hay pólizas registradas.</p>';
+    return;
+  }
+  el.innerHTML = `<table class="hv-table"><thead><tr>
+    <th>Descripción</th><th>Vencimiento</th><th>Archivo</th><th>Acciones</th>
+  </tr></thead><tbody>${rows.map((p) => `
+    <tr>
+      <td class="hv-td-clip">${escapeHtml(p.descripcion)}</td>
+      <td>${p.fecha_vencimiento ? formatFecha(p.fecha_vencimiento) : '—'}</td>
+      <td class="hv-td-clip">${escapeHtml(p.archivo_nombre || '—')}</td>
+      <td class="hv-row-actions">
+        <button type="button" data-poliza-ver="${p.id}">Ver</button>
+        ${readOnly ? '' : `<button type="button" class="is-danger" data-poliza-del="${p.id}">Quitar</button>`}
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
 function renderExtras(lista, readOnly) {
   const el = $('hvExtrasTabla');
   if (!el) return;
@@ -753,11 +775,13 @@ function renderContratos(lista, readOnly) {
   const rows = lista || [];
   if (alerta) {
     const prox = hvFolderData?.progreso?.contrato_estado;
-    const fin = (rows || [])
-      .filter((r) => r.tipo !== 'preaviso' && r.fecha_terminacion)
-      .map((r) => String(r.fecha_terminacion).slice(0, 10))
-      .sort()
-      .reverse()[0];
+    const fin = hvFolderData?.progreso?.proxima_terminacion_contrato
+      || (rows || [])
+        .filter((r) => r.tipo !== 'preaviso' && r.fecha_terminacion)
+        .map((r) => String(r.fecha_terminacion).slice(0, 10))
+        .filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f))
+        .sort()
+        .reverse()[0];
     if (prox === 'vencido') {
       alerta.hidden = false;
       alerta.className = 'hv-missing-chip';
@@ -775,14 +799,14 @@ function renderContratos(lista, readOnly) {
     return;
   }
   el.innerHTML = `<table class="hv-table"><thead><tr>
-    <th>Tipo</th><th>Descripción</th><th>Inicio</th><th>Firma</th><th>Terminación</th><th>Acciones</th>
+    <th>Tipo</th><th>Descripción</th><th>Inicio</th><th>Terminación</th><th>Firma</th><th>Acciones</th>
   </tr></thead><tbody>${rows.map((c) => `
     <tr>
       <td>${labelTipoContrato(c.tipo)}</td>
       <td class="hv-td-clip">${escapeHtml(c.descripcion || c.archivo_nombre || '—')}</td>
       <td>${c.fecha_inicio ? formatFecha(c.fecha_inicio) : '—'}</td>
-      <td>${c.fecha_firma ? formatFecha(c.fecha_firma) : '—'}</td>
       <td>${c.fecha_terminacion ? formatFecha(c.fecha_terminacion) : '—'}</td>
+      <td>${c.fecha_firma ? formatFecha(c.fecha_firma) : '—'}</td>
       <td class="hv-row-actions">
         <button type="button" data-contrato-ver="${c.id}">Ver</button>
         ${readOnly ? '' : `<button type="button" class="is-danger" data-contrato-del="${c.id}">Quitar</button>`}
@@ -856,10 +880,11 @@ function renderVacaciones(data, movimientos, readOnly) {
 
 function pintarPanelesExtras(data, readOnly) {
   renderCursos(data.cursos || [], readOnly);
+  renderPolizas(data.polizas || [], readOnly);
   renderExtras(data.adicionales || [], readOnly);
   renderContratos(data.contratos || [], readOnly);
   renderVacaciones(data.vacaciones, data.vacaciones_movimientos || [], readOnly);
-  ['btnHvCursoNuevo', 'btnHvExtraNuevo', 'btnHvContratoNuevo'].forEach((id) => {
+  ['btnHvCursoNuevo', 'btnHvPolizaNuevo', 'btnHvExtraNuevo', 'btnHvContratoNuevo'].forEach((id) => {
     if ($(id)) $(id).hidden = readOnly;
   });
 }
@@ -1153,9 +1178,19 @@ function abrirDialogoEstado() {
   const activo = fichaActiva();
   $('hvInactivarTitulo').textContent = activo ? 'Inactivar colaborador' : 'Reactivar colaborador';
   $('hvInactivarTexto').textContent = activo
-    ? 'La carpeta se oculta del tablero. Los archivos no se borran y se pueden consultar o reactivar después.'
+    ? 'Para inactivar debes adjuntar el paz y salvo y la liquidación realizada. La carpeta se oculta del tablero; los archivos se conservan.'
     : 'La ficha vuelve al banco activo y se puede seguir cargando documentos.';
   $('btnHvInactivarOk').textContent = activo ? 'Inactivar' : 'Reactivar';
+  const docs = $('hvInactivarDocs');
+  if (docs) docs.classList.toggle('hidden', !activo);
+  if ($('hvInactivarPaz')) {
+    $('hvInactivarPaz').value = '';
+    $('hvInactivarPaz').required = activo;
+  }
+  if ($('hvInactivarLiquidacion')) {
+    $('hvInactivarLiquidacion').value = '';
+    $('hvInactivarLiquidacion').required = activo;
+  }
   setError('hvInactivarError', '');
   $('dlgHvInactivar').showModal();
 }
@@ -1330,10 +1365,30 @@ function setupHojasVida() {
     setError('hvInactivarError', '');
     $('btnHvInactivarOk').disabled = true;
     try {
-      const res = await apiFetch(`/api/funcionarios/${hvFolderId}/estado`, {
-        method: 'PATCH',
-        body: JSON.stringify({ activo })
-      });
+      let res;
+      if (activo === 0) {
+        const paz = $('hvInactivarPaz')?.files?.[0];
+        const liq = $('hvInactivarLiquidacion')?.files?.[0];
+        if (!paz || !liq) {
+          setError('hvInactivarError', 'Adjunta el paz y salvo y la liquidación');
+          return;
+        }
+        const fd = new FormData();
+        fd.append('activo', '0');
+        fd.append('paz_y_salvo', paz);
+        fd.append('liquidacion', liq);
+        res = await fetch(`/api/funcionarios/${hvFolderId}/estado`, {
+          method: 'PATCH',
+          headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
+          credentials: 'include',
+          body: fd
+        });
+      } else {
+        res = await apiFetch(`/api/funcionarios/${hvFolderId}/estado`, {
+          method: 'PATCH',
+          body: JSON.stringify({ activo: 1 })
+        });
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError('hvInactivarError', data.error || 'No se pudo actualizar');
@@ -1441,6 +1496,43 @@ function setupHojasVida() {
       await abrirCarpeta(hvFolderId);
     } catch (_) {
       setError('hvCursoError', 'Error de conexión');
+    }
+  });
+
+  $('btnHvPolizaNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvPoliza')?.reset();
+    setError('hvPolizaError', '');
+    $('dlgHvPoliza').showModal();
+  });
+  $('btnHvPolizaCerrar')?.addEventListener('click', () => $('dlgHvPoliza')?.close());
+  $('formHvPoliza')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!hvFolderId || !fichaActiva()) return;
+    const archivo = $('hvPolizaArchivo')?.files?.[0];
+    if (!archivo) return;
+    setError('hvPolizaError', '');
+    const fd = new FormData();
+    fd.append('archivo', archivo);
+    fd.append('descripcion', $('hvPolizaNombre').value.trim());
+    fd.append('fecha_vencimiento', $('hvPolizaVence').value);
+    try {
+      const res = await fetch(`/api/funcionarios/${hvFolderId}/polizas`, {
+        method: 'POST',
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : {},
+        credentials: 'include',
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError('hvPolizaError', data.error || 'No se pudo guardar');
+        return;
+      }
+      $('dlgHvPoliza').close();
+      await abrirCarpeta(hvFolderId);
+      cargarFuncionarios();
+    } catch (_) {
+      setError('hvPolizaError', 'Error de conexión');
     }
   });
 
@@ -1579,18 +1671,27 @@ function setupHojasVida() {
     if (!hvFolderId) return;
     const cursoVer = e.target.closest('[data-curso-ver]');
     const cursoDel = e.target.closest('[data-curso-del]');
+    const polizaVer = e.target.closest('[data-poliza-ver]');
+    const polizaDel = e.target.closest('[data-poliza-del]');
     const extraVer = e.target.closest('[data-extra-ver]');
     const extraDel = e.target.closest('[data-extra-del]');
     const contratoVer = e.target.closest('[data-contrato-ver]');
     const contratoDel = e.target.closest('[data-contrato-del]');
     const vacacionDel = e.target.closest('[data-vacacion-del]');
     if (cursoVer) window.open(`/api/funcionarios/${hvFolderId}/cursos/${cursoVer.getAttribute('data-curso-ver')}/archivo`, '_blank');
+    if (polizaVer) window.open(`/api/funcionarios/${hvFolderId}/polizas/${polizaVer.getAttribute('data-poliza-ver')}/archivo`, '_blank');
     if (extraVer) window.open(`/api/funcionarios/${hvFolderId}/adicionales/${extraVer.getAttribute('data-extra-ver')}/archivo`, '_blank');
     if (contratoVer) window.open(`/api/funcionarios/${hvFolderId}/contratos/${contratoVer.getAttribute('data-contrato-ver')}/archivo`, '_blank');
     if (cursoDel && fichaActiva()) {
       if (!confirm('¿Quitar este curso?')) return;
       await apiFetch(`/api/funcionarios/${hvFolderId}/cursos/${cursoDel.getAttribute('data-curso-del')}`, { method: 'DELETE' });
       await abrirCarpeta(hvFolderId);
+    }
+    if (polizaDel && fichaActiva()) {
+      if (!confirm('¿Quitar esta póliza?')) return;
+      await apiFetch(`/api/funcionarios/${hvFolderId}/polizas/${polizaDel.getAttribute('data-poliza-del')}`, { method: 'DELETE' });
+      await abrirCarpeta(hvFolderId);
+      cargarFuncionarios();
     }
     if (extraDel && fichaActiva()) {
       if (!confirm('¿Quitar este documento adicional?')) return;
@@ -1610,6 +1711,7 @@ function setupHojasVida() {
     }
   };
   $('hvCursosTabla')?.addEventListener('click', panelClick);
+  $('hvPolizasTabla')?.addEventListener('click', panelClick);
   $('hvExtrasTabla')?.addEventListener('click', panelClick);
   $('hvContratosTabla')?.addEventListener('click', panelClick);
   $('hvVacacionesTabla')?.addEventListener('click', panelClick);
