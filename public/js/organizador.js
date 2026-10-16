@@ -92,7 +92,7 @@
       const done = h.estado === 'completada';
       return `<div class="org-sub">
         <strong>${escapeHtml(h.titulo)}</strong>
-        ${done ? `<span class="org-pill">Hecha ${h.completada_en ? formatFecha(h.completada_en) : ''}</span>` : ''}
+        ${done ? `<span class="org-pill">Hecha ${h.completada_en ? formatFechaHora(h.completada_en) : ''}</span>` : ''}
         ${done ? '' : `<div class="org-task-actions" style="margin-top:6px">
           <button type="button" data-org-completar="${h.id}" data-prueba="${h.requiere_prueba}">Completar</button>
         </div>`}
@@ -105,9 +105,9 @@
          <button type="button" data-org-edit="${t.id}">Editar</button>
          <button type="button" data-org-del="${t.id}">Quitar</button>`;
     const extra = archivo
-      ? `<p>Completada ${t.completada_en ? formatFecha(t.completada_en) : ''} ${t.completada_por_nombre ? `· ${escapeHtml(t.completada_por_nombre)}` : ''}${t.justificacion ? `<br>${escapeHtml(t.justificacion)}` : ''}</p>`
+      ? `<p>Marcada como completada el ${t.completada_en ? formatFechaHora(t.completada_en) : '—'} ${t.completada_por_nombre ? `· ${escapeHtml(t.completada_por_nombre)}` : ''}${t.justificacion ? `<br>${escapeHtml(t.justificacion)}` : '<br>Sin justificación escrita.'}</p>`
       : `<p>${escapeHtml(t.detalle || t.cuadrante_label)}</p>`;
-    return `<article class="org-task" data-id="${t.id}">
+    return `<article class="org-task" data-id="${t.id}" ${archivo ? '' : 'draggable="true"'}>
       <h5>${escapeHtml(t.titulo)}</h5>
       ${extra}
       <div class="org-task-meta">
@@ -176,11 +176,112 @@
     } catch (_) { /* ignore */ }
   }
 
+  function formatFechaHora(value) {
+    if (!value) return '';
+    const raw = String(value).replace('T', ' ').trim();
+    const [fecha, hora] = raw.split(' ');
+    const dia = formatFecha(fecha);
+    const hhmm = (hora || '').slice(0, 5);
+    return hhmm ? `${dia} ${hhmm}` : dia;
+  }
+
   function isoDe(d) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  function addMesesIso(iso, meses, anchorDay) {
+    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const day = anchorDay || d;
+    const target = new Date(y, m - 1 + meses, 1);
+    const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    target.setDate(Math.min(day, last));
+    return isoDe(target);
+  }
+
+  function mesesPeriodo(periodicidad) {
+    if (periodicidad === 'mensual') return 1;
+    if (periodicidad === 'trimestral') return 3;
+    if (periodicidad === 'anual') return 12;
+    if (periodicidad === 'cada_5_anios') return 60;
+    if (periodicidad === 'cada_7_anios') return 84;
+    if (periodicidad === 'cada_10_anios') return 120;
+    return 0;
+  }
+
+  function addPeriodoIso(iso, periodicidad, ancla) {
+    const raw = String(iso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+    if (periodicidad === 'semanal') {
+      const [y, m, d] = raw.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() + 7);
+      return isoDe(dt);
+    }
+    const meses = mesesPeriodo(periodicidad);
+    if (!meses) return raw;
+    const anchorDay = Number(String(ancla || raw).slice(8, 10)) || Number(raw.slice(8, 10));
+    return addMesesIso(raw, meses, anchorDay);
+  }
+
+  function ocurrenciasEntre(iso, periodicidad, desde, hasta) {
+    const ancla = String(iso || '').slice(0, 10);
+    const start = String(desde || '').slice(0, 10);
+    const end = String(hasta || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ancla) || start > end) return [];
+    if (!periodicidad || periodicidad === 'ninguna') {
+      return ancla >= start && ancla <= end ? [ancla] : [];
+    }
+    let cursor = ancla;
+    let guard = 0;
+    while (cursor < start && guard < 2000) {
+      const next = addPeriodoIso(cursor, periodicidad, ancla);
+      if (!next || next <= cursor) return [];
+      cursor = next;
+      guard += 1;
+    }
+    const out = [];
+    while (cursor && cursor <= end && guard < 2600) {
+      if (cursor >= start) out.push(cursor);
+      const next = addPeriodoIso(cursor, periodicidad, ancla);
+      if (!next || next <= cursor) break;
+      cursor = next;
+      guard += 1;
+    }
+    return out;
+  }
+
+  function estadoDe(iso, alerta) {
+    const hoy = isoDe(new Date());
+    if (!iso) return 'sin_fecha';
+    if (iso < hoy) return 'vencido';
+    const a = new Date(`${hoy}T00:00:00`);
+    const b = new Date(`${iso}T00:00:00`);
+    const days = Math.round((b.getTime() - a.getTime()) / 86400000);
+    return days <= (Number(alerta) || 0) ? 'por_vencer' : 'vigente';
+  }
+
+  function filasDelMes() {
+    const y = calMes.getFullYear();
+    const m = calMes.getMonth();
+    const desde = isoDe(new Date(y, m, 1));
+    const hasta = isoDe(new Date(y, m + 1, 0));
+    const rows = [];
+    agenda.forEach((ev) => {
+      const fechas = ocurrenciasEntre(ev.fecha_base || ev.fecha, ev.periodicidad || 'ninguna', desde, hasta);
+      fechas.forEach((fecha) => {
+        rows.push({
+          ...ev,
+          fecha,
+          fecha_estado: estadoDe(fecha, ev.alerta_dias)
+        });
+      });
+    });
+    rows.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    return rows;
   }
 
   function pintarCalendario() {
@@ -192,9 +293,8 @@
     const start = (first.getDay() + 6) % 7;
     const days = new Date(y, m + 1, 0).getDate();
     const byDay = {};
-    agenda.forEach((ev) => {
+    filasDelMes().forEach((ev) => {
       const f = String(ev.fecha || '').slice(0, 10);
-      if (!f.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`)) return;
       byDay[f] = (byDay[f] || 0) + 1;
     });
     const names = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -216,15 +316,15 @@
     const el = $('orgAgendaLista');
     if (!el) return;
     const tipo = $('orgFiltroAgendaTipo')?.value || '';
-    let rows = agenda.filter((e) => !tipo || e.tipo === tipo);
+    let rows = filasDelMes().filter((e) => !tipo || e.tipo === tipo);
     if (diaSel) rows = rows.filter((e) => String(e.fecha || '').slice(0, 10) === diaSel);
     if (!rows.length) {
-      el.innerHTML = '<p class="hv-empty-table">No hay eventos en este filtro.</p>';
+      el.innerHTML = '<p class="hv-empty-table">No hay eventos en este mes.</p>';
       return;
     }
     el.innerHTML = rows.map((e) => {
       const obs = (e.observaciones || []).slice(0, 3).map((o) =>
-        `<div class="org-obs">${escapeHtml(formatFecha(o.creado_en))} · ${escapeHtml(o.texto)}${o.creado_por_nombre ? ` — ${escapeHtml(o.creado_por_nombre)}` : ''}</div>`
+        `<div class="org-obs">${escapeHtml(formatFechaHora(o.creado_en))} · ${escapeHtml(o.texto)}${o.creado_por_nombre ? ` — ${escapeHtml(o.creado_por_nombre)}` : ''}${o.tiene_prueba ? ` · <button type="button" data-org-obs-prueba="${o.id}">Ver prueba</button>` : ''}</div>`
       ).join('');
       const banco = e.fuente === 'banco';
       const esTarea = e.fuente === 'tarea';
@@ -234,6 +334,7 @@
           <span class="org-pill">${escapeHtml(e.tipo_label || '')}</span>
           <span class="org-pill ${e.fecha_estado === 'vencido' ? 'is-late' : (e.fecha_estado === 'por_vencer' ? 'is-soon' : '')}">${formatFecha(e.fecha)}</span>
           ${e.periodicidad && e.periodicidad !== 'ninguna' ? `<span class="org-pill">${escapeHtml(e.periodicidad_label)}</span>` : ''}
+          ${Number(e.requiere_prueba) === 1 ? '<span class="org-pill">Pide prueba</span>' : ''}
           ${banco ? '<span class="org-pill is-banco">Banco HV</span>' : ''}
           ${esTarea ? '<span class="org-pill is-banco">Tarea</span>' : ''}
           ${e.ubicacion ? `<span class="org-pill">${escapeHtml(e.ubicacion)}</span>` : ''}
@@ -242,7 +343,7 @@
         ${obs}
         ${banco || esTarea ? '' : `<div class="org-task-actions">
           <button type="button" data-org-obs="${e.id}">Observación</button>
-          <button type="button" data-org-hecho="${e.id}">Marcar realizado</button>
+          <button type="button" data-org-hecho="${e.id}" data-prueba="${Number(e.requiere_prueba) === 1 ? 1 : 0}" data-titulo="${escapeHtml(e.titulo)}">Marcar realizado</button>
           <button type="button" data-org-edit-ev="${e.id}">Editar</button>
           <button type="button" data-org-del-ev="${e.id}">Quitar</button>
         </div>`}
@@ -396,6 +497,58 @@
       }
     });
 
+    $('orgMatriz')?.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.org-task');
+      if (!card || e.target.closest('button')) {
+        e.preventDefault();
+        return;
+      }
+      card.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.getAttribute('data-id') || '');
+    });
+    $('orgMatriz')?.addEventListener('dragend', (e) => {
+      e.target.closest?.('.org-task')?.classList.remove('is-dragging');
+      document.querySelectorAll('.org-col.is-drop').forEach((col) => col.classList.remove('is-drop'));
+    });
+    $('orgMatriz')?.addEventListener('dragover', (e) => {
+      if (!e.target.closest('.org-col')) return;
+      e.preventDefault();
+      document.querySelectorAll('.org-col.is-drop').forEach((col) => col.classList.remove('is-drop'));
+      e.target.closest('.org-col').classList.add('is-drop');
+    });
+    $('orgMatriz')?.addEventListener('drop', async (e) => {
+      const col = e.target.closest('.org-col');
+      if (!col) return;
+      e.preventDefault();
+      col.classList.remove('is-drop');
+      const id = e.dataTransfer.getData('text/plain');
+      const q = col.getAttribute('data-q');
+      const niveles = {
+        hacer: [4, 4],
+        planear: [1, 4],
+        atender: [4, 1],
+        cuando: [1, 1]
+      };
+      const par = niveles[q];
+      if (!id || !par) return;
+      const actual = buscarTarea(id);
+      if (actual && actual.cuadrante === q) return;
+      try {
+        const res = await apiFetch(`/api/organizador/tareas/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ urgencia: par[0], importancia: par[1] })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError('orgError', data.error || 'No se pudo mover la tarea');
+        }
+      } catch (_) {
+        setError('orgError', 'Error de conexión');
+      }
+      cargarPendientes();
+    });
+
     $('orgMatriz')?.addEventListener('click', async (e) => {
       const sub = e.target.closest('[data-org-sub]');
       const edit = e.target.closest('[data-org-edit]');
@@ -464,16 +617,25 @@
       }
     });
 
+    function syncTipoAgenda() {
+      const tipo = $('orgAgendaTipo')?.value || '';
+      const alerta = catalogo?.tipos_agenda_alerta?.[tipo];
+      if (alerta != null && $('orgAgendaAlerta')) $('orgAgendaAlerta').value = String(alerta);
+      const pide = /mantenimiento|ascensor|equipo|insumo|extintor/.test(tipo);
+      if (!$('orgAgendaId')?.value && $('orgAgendaPrueba')) $('orgAgendaPrueba').checked = pide;
+    }
+
     $('btnOrgEventoNuevo')?.addEventListener('click', () => {
       $('formOrgAgenda')?.reset();
       $('orgAgendaId').value = '';
       $('orgAgendaTituloDlg').textContent = 'Nuevo evento';
-      $('orgAgendaAlerta').value = '30';
-      $('orgAgendaPeriodo').value = 'ninguna';
+      $('orgAgendaPeriodo').value = 'mensual';
       if (diaSel && $('orgAgendaFecha')) $('orgAgendaFecha').value = diaSel;
+      syncTipoAgenda();
       setError('orgAgendaFormError', '');
       $('dlgOrgAgenda').showModal();
     });
+    $('orgAgendaTipo')?.addEventListener('change', syncTipoAgenda);
     $('btnOrgAgendaCerrar')?.addEventListener('click', () => $('dlgOrgAgenda')?.close());
     $('formOrgAgenda')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -485,7 +647,8 @@
         detalle: $('orgAgendaDetalle').value.trim(),
         fecha: $('orgAgendaFecha').value,
         periodicidad: $('orgAgendaPeriodo').value,
-        alerta_dias: $('orgAgendaAlerta').value
+        alerta_dias: $('orgAgendaAlerta').value,
+        requiere_prueba: $('orgAgendaPrueba')?.checked ? 1 : 0
       };
       try {
         const res = await apiFetch(id ? `/api/organizador/agenda/${id}` : '/api/organizador/agenda', {
@@ -508,12 +671,16 @@
     $('orgCalendario')?.addEventListener('click', (e) => {
       if (e.target.id === 'orgCalPrev') {
         calMes = new Date(calMes.getFullYear(), calMes.getMonth() - 1, 1);
+        diaSel = '';
         pintarCalendario();
+        pintarAgendaLista();
         return;
       }
       if (e.target.id === 'orgCalNext') {
         calMes = new Date(calMes.getFullYear(), calMes.getMonth() + 1, 1);
+        diaSel = '';
         pintarCalendario();
+        pintarAgendaLista();
         return;
       }
       const dia = e.target.closest('[data-org-dia]');
@@ -528,20 +695,28 @@
       const hecho = e.target.closest('[data-org-hecho]');
       const edit = e.target.closest('[data-org-edit-ev]');
       const del = e.target.closest('[data-org-del-ev]');
-      if (obs) {
+      const pruebaObs = e.target.closest('[data-org-obs-prueba]');
+      if (pruebaObs) {
+        window.open(`/api/organizador/agenda/obs/${pruebaObs.getAttribute('data-org-obs-prueba')}/prueba`, '_blank');
+      }
+      if (obs && !pruebaObs) {
         $('orgObsAgendaId').value = obs.getAttribute('data-org-obs');
         $('orgObsTexto').value = '';
         setError('orgObsError', '');
         $('dlgOrgObs').showModal();
       }
       if (hecho) {
-        const nota = prompt('Nota de realización (opcional):', 'Realizado');
-        if (nota === null) return;
-        await apiFetch(`/api/organizador/agenda/${hecho.getAttribute('data-org-hecho')}/realizar`, {
-          method: 'POST',
-          body: JSON.stringify({ texto: nota })
-        });
-        cargarAgenda();
+        const pide = hecho.getAttribute('data-prueba') === '1';
+        $('orgRealizarId').value = hecho.getAttribute('data-org-hecho');
+        $('orgRealizarLead').textContent = hecho.getAttribute('data-titulo') || '';
+        $('orgRealizarHint').textContent = pide
+          ? 'Este evento exige archivo o una descripción de cómo se realizó. La próxima fecha periódica se calcula sola.'
+          : 'La nota es opcional. Si es periódico, la siguiente fecha queda programada.';
+        $('orgRealizarTexto').value = '';
+        if ($('orgRealizarArchivo')) $('orgRealizarArchivo').value = '';
+        $('orgRealizarId').dataset.prueba = pide ? '1' : '0';
+        setError('orgRealizarError', '');
+        $('dlgOrgRealizar').showModal();
       }
       if (edit) {
         const ev = agenda.find((x) => String(x.id) === edit.getAttribute('data-org-edit-ev'));
@@ -555,12 +730,47 @@
         $('orgAgendaFecha').value = String(ev.fecha_base || ev.fecha || '').slice(0, 10);
         $('orgAgendaPeriodo').value = ev.periodicidad || 'ninguna';
         $('orgAgendaAlerta').value = ev.alerta_dias || 30;
+        if ($('orgAgendaPrueba')) $('orgAgendaPrueba').checked = Number(ev.requiere_prueba) === 1;
         $('dlgOrgAgenda').showModal();
       }
       if (del && confirm('¿Quitar este evento del cronograma?')) {
         await apiFetch(`/api/organizador/agenda/${del.getAttribute('data-org-del-ev')}`, { method: 'DELETE' });
         cargarAgenda();
         pintarHomeOrg();
+      }
+    });
+
+    $('btnOrgRealizarCerrar')?.addEventListener('click', () => $('dlgOrgRealizar')?.close());
+    $('formOrgRealizar')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = $('orgRealizarId').value;
+      const texto = $('orgRealizarTexto').value.trim();
+      const archivoInput = $('orgRealizarArchivo')?.files?.[0];
+      const pide = $('orgRealizarId').dataset.prueba === '1';
+      if (pide && !texto && !archivoInput) {
+        setError('orgRealizarError', 'Adjunta una prueba o describe cómo se realizó');
+        return;
+      }
+      const fd = new FormData();
+      fd.append('texto', texto || 'Marcado como realizado');
+      if (archivoInput) fd.append('prueba', archivoInput);
+      try {
+        const res = await fetch(`/api/organizador/agenda/${id}/realizar`, {
+          method: 'POST',
+          headers: app().csrf?.() ? { 'x-csrf-token': app().csrf() } : {},
+          credentials: 'include',
+          body: fd
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError('orgRealizarError', data.error || 'No se pudo marcar');
+          return;
+        }
+        $('dlgOrgRealizar').close();
+        cargarAgenda();
+        pintarHomeOrg();
+      } catch (_) {
+        setError('orgRealizarError', 'Error de conexión');
       }
     });
 

@@ -18,22 +18,33 @@ const NIVELES = {
 };
 
 const TIPOS_AGENDA = {
-  mantenimiento_biomedico: { label: 'Mantenimiento / calibración biomédica', alerta: 30 },
-  mantenimiento_edificio: { label: 'Mantenimiento del edificio', alerta: 30 },
-  comite: { label: 'Comité / reunión', alerta: 7 },
+  nomina: { label: 'Pago de nómina', alerta: 2 },
+  pila: { label: 'Pago de la PILA', alerta: 2 },
+  seguridad: { label: 'Pago de seguridad', alerta: 2 },
+  servicios: { label: 'Pago de servicios', alerta: 2 },
+  nomina_pila: { label: 'Nómina y PILA', alerta: 2 },
   impuesto_servicio: { label: 'Impuestos, tasas y servicios', alerta: 30 },
+  poliza: { label: 'Vencimiento de póliza', alerta: 30 },
+  insumo: { label: 'Insumo, dispositivo o pipeta', alerta: 30 },
+  mantenimiento_biomedico: { label: 'Mantenimiento de equipo biomédico', alerta: 30 },
+  mantenimiento_edificio: { label: 'Mantenimiento del edificio', alerta: 30 },
+  ascensor: { label: 'Ascensor', alerta: 30 },
+  equipo_edificio: { label: 'Equipo del edificio (UPS, planta, portón, cámaras…)', alerta: 30 },
+  comite: { label: 'Comité / reunión', alerta: 7 },
   extintor: { label: 'Recarga de extintores', alerta: 30 },
   informe: { label: 'Informe a contratante / autoridad', alerta: 14 },
-  nomina_pila: { label: 'Nómina y PILA', alerta: 5 },
   otro: { label: 'Otro evento de calidad', alerta: 30 }
 };
 
 const PERIODICIDADES = {
   ninguna: 'Sin repetición',
   semanal: 'Cada semana',
-  mensual: 'Cada mes',
+  mensual: 'Cada mes (el mismo día)',
   trimestral: 'Cada 3 meses',
-  anual: 'Cada año'
+  anual: 'Cada año',
+  cada_5_anios: 'Cada 5 años',
+  cada_7_anios: 'Cada 7 años',
+  cada_10_anios: 'Cada 10 años'
 };
 
 const AVISO_FRECUENCIAS = {
@@ -117,25 +128,69 @@ function parseIsoDate(iso) {
   return new Date(y, m - 1, d);
 }
 
-function addPeriodo(iso, periodicidad) {
+function addMonthsClamped(iso, months, anchorDay) {
   const dt = parseIsoDate(iso);
   if (!dt) return null;
-  if (periodicidad === 'semanal') dt.setDate(dt.getDate() + 7);
-  else if (periodicidad === 'mensual') dt.setMonth(dt.getMonth() + 1);
-  else if (periodicidad === 'trimestral') dt.setMonth(dt.getMonth() + 3);
-  else if (periodicidad === 'anual') dt.setFullYear(dt.getFullYear() + 1);
-  else return fechaIso(iso);
-  return toIsoDate(dt);
+  const day = anchorDay || dt.getDate();
+  const target = new Date(dt.getFullYear(), dt.getMonth() + months, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, last));
+  return toIsoDate(target);
+}
+
+function mesesDePeriodicidad(periodicidad) {
+  if (periodicidad === 'mensual') return 1;
+  if (periodicidad === 'trimestral') return 3;
+  if (periodicidad === 'anual') return 12;
+  if (periodicidad === 'cada_5_anios') return 60;
+  if (periodicidad === 'cada_7_anios') return 84;
+  if (periodicidad === 'cada_10_anios') return 120;
+  return 0;
+}
+
+function addPeriodo(iso, periodicidad, ancla) {
+  const dt = parseIsoDate(iso);
+  if (!dt) return null;
+  if (periodicidad === 'semanal') {
+    dt.setDate(dt.getDate() + 7);
+    return toIsoDate(dt);
+  }
+  const meses = mesesDePeriodicidad(periodicidad);
+  if (!meses) return fechaIso(iso);
+  const anchorDay = parseIsoDate(ancla || iso)?.getDate() || dt.getDate();
+  return addMonthsClamped(iso, meses, anchorDay);
+}
+
+function ocurrenciasEntre(iso, periodicidad, desde, hasta) {
+  const ancla = fechaIso(iso);
+  const start = fechaIso(desde);
+  const end = fechaIso(hasta);
+  if (!ancla || !start || !end || start > end) return [];
+  if (!periodicidad || periodicidad === 'ninguna') {
+    return ancla >= start && ancla <= end ? [ancla] : [];
+  }
+  let cursor = ancla < start ? avanzarHastaFuturo(ancla, periodicidad, start) : ancla;
+  const out = [];
+  let guard = 0;
+  while (cursor && cursor <= end && guard < 600) {
+    if (cursor >= start) out.push(cursor);
+    const next = addPeriodo(cursor, periodicidad, ancla);
+    if (!next || next <= cursor) break;
+    cursor = next;
+    guard += 1;
+  }
+  return out;
 }
 
 function avanzarHastaFuturo(iso, periodicidad, hoy) {
   const today = fechaIso(hoy) || toIsoDate(new Date());
-  if (!iso) return null;
-  if (!periodicidad || periodicidad === 'ninguna') return fechaIso(iso);
-  let actual = fechaIso(iso);
+  const ancla = fechaIso(iso);
+  if (!ancla) return null;
+  if (!periodicidad || periodicidad === 'ninguna') return ancla;
+  let actual = ancla;
   let guard = 0;
-  while (actual && actual < today && guard < 400) {
-    const next = addPeriodo(actual, periodicidad);
+  while (actual && actual < today && guard < 2000) {
+    const next = addPeriodo(actual, periodicidad, ancla);
     if (!next || next === actual) break;
     actual = next;
     guard += 1;
@@ -214,6 +269,7 @@ module.exports = {
   cuadrante,
   addPeriodo,
   avanzarHastaFuturo,
+  ocurrenciasEntre,
   enriquecerTarea,
   enriquecerEvento,
   fechaIso,

@@ -139,6 +139,9 @@ router.get('/organizador/catalogo', requireAuth, (_req, res) => {
     tipos_agenda: Object.fromEntries(
       Object.entries(TIPOS_AGENDA).map(([id, t]) => [id, t.label])
     ),
+    tipos_agenda_alerta: Object.fromEntries(
+      Object.entries(TIPOS_AGENDA).map(([id, t]) => [id, t.alerta])
+    ),
     periodicidades: PERIODICIDADES,
     aviso_frecuencias: AVISO_FRECUENCIAS
   });
@@ -437,7 +440,8 @@ router.get('/organizador/agenda', requireAuth, async (req, res) => {
         id: o.id,
         texto: o.texto,
         creado_en: o.creado_en,
-        creado_por_nombre: o.creado_por_nombre
+        creado_por_nombre: o.creado_por_nombre,
+        tiene_prueba: Boolean(o.prueba_path)
       });
     });
     const propios = rows.map((r) => {
@@ -486,10 +490,11 @@ router.post('/organizador/agenda', requireAuth, async (req, res) => {
     const periodicidad = clean(req.body?.periodicidad, 20) || 'ninguna';
     if (!periodicidadValida(periodicidad)) return res.status(400).json({ error: 'Periodicidad no válida' });
     const alerta = parseInt(req.body?.alerta_dias, 10);
+    const requiere = Number(req.body?.requiere_prueba) === 1 ? 1 : 0;
     const result = await db.execute(
       `INSERT INTO org_agenda
-        (titulo, tipo, detalle, ubicacion, fecha, periodicidad, alerta_dias, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (titulo, tipo, detalle, ubicacion, fecha, periodicidad, alerta_dias, requiere_prueba, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         titulo,
         tipo,
@@ -498,6 +503,7 @@ router.post('/organizador/agenda', requireAuth, async (req, res) => {
         fecha,
         periodicidad,
         Number.isFinite(alerta) && alerta >= 0 ? alerta : (TIPOS_AGENDA[tipo].alerta),
+        requiere,
         usuarioId(req) || null
       ]
     );
@@ -525,10 +531,13 @@ router.patch('/organizador/agenda/:id', requireAuth, async (req, res) => {
       : row.periodicidad;
     if (!periodicidadValida(periodicidad)) return res.status(400).json({ error: 'Periodicidad no válida' });
     const alertaIn = parseInt(req.body?.alerta_dias, 10);
+    const requiere = req.body?.requiere_prueba != null
+      ? (Number(req.body.requiere_prueba) === 1 ? 1 : 0)
+      : Number(row.requiere_prueba) === 1 ? 1 : 0;
     await db.execute(
       `UPDATE org_agenda SET
          titulo = ?, tipo = ?, detalle = ?, ubicacion = ?, fecha = ?,
-         periodicidad = ?, alerta_dias = ?
+         periodicidad = ?, alerta_dias = ?, requiere_prueba = ?
        WHERE id = ?`,
       [
         titulo,
@@ -538,6 +547,7 @@ router.patch('/organizador/agenda/:id', requireAuth, async (req, res) => {
         fecha,
         periodicidad,
         Number.isFinite(alertaIn) && alertaIn >= 0 ? alertaIn : row.alerta_dias,
+        requiere,
         id
       ]
     );
@@ -552,6 +562,10 @@ router.delete('/organizador/agenda/:id', requireAuth, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'Evento inválido' });
   try {
+    const pruebas = await db.query('SELECT prueba_path FROM org_agenda_obs WHERE agenda_id = ?', [id]);
+    pruebas.forEach((p) => {
+      if (p.prueba_path) storage.borrarArchivo(p.prueba_path);
+    });
     await db.execute('DELETE FROM org_agenda WHERE id = ?', [id]);
     res.json({ ok: true });
   } catch (e) {
@@ -577,25 +591,66 @@ router.post('/organizador/agenda/:id/observacion', requireAuth, async (req, res)
   }
 });
 
-router.post('/organizador/agenda/:id/realizar', requireAuth, async (req, res) => {
+router.post('/organizador/agenda/:id/realizar', requireAuth, (req, res, next) => {
+  const ct = String(req.headers['content-type'] || '');
+  if (ct.includes('multipart/form-data')) return uploadPrueba.single('prueba')(req, res, next);
+  next();
+}, async (req, res) => {
   const id = parseId(req.params.id);
-  if (!id) return res.status(400).json({ error: 'Evento inválido' });
+  if (!id) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'Evento inválido' });
+  }
   try {
     const row = await db.queryOne('SELECT * FROM org_agenda WHERE id = ?', [id]);
-    if (!row) return res.status(404).json({ error: 'Evento no encontrado' });
+    if (!row) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(404).json({ error: 'Evento no encontrado' });
+    }
     const nota = clean(req.body?.texto, 4000) || 'Marcado como realizado';
+    const requiere = Number(row.requiere_prueba) === 1;
+    if (requiere && !req.file && nota === 'Marcado como realizado') {
+      return res.status(400).json({ error: 'Este evento pide prueba: adjunta un archivo o describe cómo se hizo' });
+    }
+    let pruebaPath = null;
+    let pruebaNombre = null;
+    if (req.file) {
+      pruebaPath = storage.rutaRelativa(req.file.path);
+      pruebaNombre = req.file.originalname || req.file.filename;
+      storage.copiarAEspejo(pruebaPath);
+    }
     await db.execute(
-      'INSERT INTO org_agenda_obs (agenda_id, texto, creado_por) VALUES (?, ?, ?)',
-      [id, nota, usuarioId(req) || null]
+      `INSERT INTO org_agenda_obs (agenda_id, texto, prueba_nombre, prueba_path, creado_por)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, nota, pruebaNombre, pruebaPath, usuarioId(req) || null]
     );
     if (row.periodicidad && row.periodicidad !== 'ninguna') {
       const hoy = fechaIso(new Date().toISOString());
-      let next = addPeriodo(row.fecha, row.periodicidad);
-      while (next && next <= hoy) next = addPeriodo(next, row.periodicidad);
+      let next = addPeriodo(row.fecha, row.periodicidad, row.fecha);
+      while (next && next <= hoy) next = addPeriodo(next, row.periodicidad, row.fecha);
       if (next) await db.execute('UPDATE org_agenda SET fecha = ? WHERE id = ?', [next, id]);
     }
     const updated = await db.queryOne('SELECT * FROM org_agenda WHERE id = ?', [id]);
     res.json({ ok: true, evento: enriquecerEvento(updated) });
+  } catch (e) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    res.status(500).json({ error: safeError(e) });
+  }
+});
+
+router.get('/organizador/agenda/obs/:obsId/prueba', requireAuth, async (req, res) => {
+  const id = parseId(req.params.obsId);
+  try {
+    const row = await db.queryOne(
+      'SELECT prueba_path, prueba_nombre FROM org_agenda_obs WHERE id = ?',
+      [id]
+    );
+    if (!row?.prueba_path) return res.status(404).json({ error: 'Sin prueba adjunta' });
+    const abs = storage.resolverLectura(row.prueba_path);
+    if (!abs) return res.status(404).json({ error: 'El archivo ya no está en el servidor' });
+    res.setHeader('Content-Type', mimeFor(row.prueba_nombre || row.prueba_path));
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(row.prueba_nombre || 'prueba')}"`);
+    fs.createReadStream(abs).pipe(res);
   } catch (e) {
     res.status(500).json({ error: safeError(e) });
   }

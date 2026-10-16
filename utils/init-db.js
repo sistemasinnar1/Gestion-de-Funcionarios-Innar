@@ -414,9 +414,12 @@ async function initializeDatabase() {
       detalle TEXT NULL,
       ubicacion VARCHAR(180) NULL,
       fecha DATE NOT NULL,
-      periodicidad ENUM('ninguna', 'semanal', 'mensual', 'trimestral', 'anual')
-        NOT NULL DEFAULT 'ninguna',
+      periodicidad ENUM(
+        'ninguna', 'semanal', 'mensual', 'trimestral', 'anual',
+        'cada_5_anios', 'cada_7_anios', 'cada_10_anios'
+      ) NOT NULL DEFAULT 'ninguna',
       alerta_dias INT NOT NULL DEFAULT 30,
+      requiere_prueba TINYINT(1) NOT NULL DEFAULT 0,
       activo TINYINT(1) NOT NULL DEFAULT 1,
       creado_por INT NULL,
       creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -431,6 +434,8 @@ async function initializeDatabase() {
       id INT AUTO_INCREMENT PRIMARY KEY,
       agenda_id INT NOT NULL,
       texto TEXT NOT NULL,
+      prueba_nombre VARCHAR(255) NULL,
+      prueba_path VARCHAR(500) NULL,
       creado_por INT NULL,
       creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_org_obs_agenda (agenda_id),
@@ -438,6 +443,28 @@ async function initializeDatabase() {
         FOREIGN KEY (agenda_id) REFERENCES org_agenda(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  await conn.query(
+    `ALTER TABLE org_agenda
+     MODIFY COLUMN periodicidad ENUM(
+       'ninguna', 'semanal', 'mensual', 'trimestral', 'anual',
+       'cada_5_anios', 'cada_7_anios', 'cada_10_anios'
+     ) NOT NULL DEFAULT 'ninguna'`
+  );
+  if (!(await columnExists(conn, dbName, 'org_agenda', 'requiere_prueba'))) {
+    await conn.query(
+      'ALTER TABLE org_agenda ADD COLUMN requiere_prueba TINYINT(1) NOT NULL DEFAULT 0 AFTER alerta_dias'
+    );
+    console.log('✓ org_agenda: requiere_prueba');
+  }
+  if (!(await columnExists(conn, dbName, 'org_agenda_obs', 'prueba_path'))) {
+    await conn.query(
+      `ALTER TABLE org_agenda_obs
+       ADD COLUMN prueba_nombre VARCHAR(255) NULL AFTER texto,
+       ADD COLUMN prueba_path VARCHAR(500) NULL AFTER prueba_nombre`
+    );
+    console.log('✓ org_agenda_obs: prueba');
+  }
 
   const multipleTipos = DOC_TYPES.filter((d) => d.multiple).map((d) => d.id);
   const ph = multipleTipos.map(() => '?').join(',') || "''";

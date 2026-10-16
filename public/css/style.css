@@ -1969,6 +1969,13 @@ body {
   color: var(--c-dark);
 }
 
+.org-col.is-drop {
+  outline: 2px dashed var(--c-primary);
+  outline-offset: 2px;
+}
+
+.org-task[draggable="true"] { cursor: grab; }
+.org-task.is-dragging { opacity: 0.45; }
 .org-col[data-q="hacer"] { border-color: #fecaca; background: #fff8f8; }
 .org-col[data-q="planear"] { border-color: #cde7e1; background: #f6fbf9; }
 .org-col[data-q="atender"] { border-color: #f6d38a; background: #fffdf7; }

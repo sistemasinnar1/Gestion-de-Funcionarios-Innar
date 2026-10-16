@@ -1,6 +1,7 @@
 const db = require('./db-mysql');
 const logger = require('./logger');
 const mailer = require('./mailer');
+const { auditarArchivos } = require('./respaldo');
 const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, estadoFecha, elegirTerminacion, fechasTerminacionParaAlerta } = require('./documentos-catalogo');
 const { eventosDesdeBanco } = require('./organizador-banco');
 const { enriquecerEvento, TEMATICAS, diasAvisoFrecuencia, horasAvisoFrecuencia, avisoHoraValida, avisoUsaHoraFija } = require('./organizador-catalogo');
@@ -33,10 +34,7 @@ function cumpleEnDias(iso) {
 }
 
 function hoyIso() {
-  const n = new Date();
-  const m = String(n.getMonth() + 1).padStart(2, '0');
-  const d = String(n.getDate()).padStart(2, '0');
-  return `${n.getFullYear()}-${m}-${d}`;
+  return fechaEnBogota();
 }
 
 async function yaEnviadoHoy() {

@@ -335,7 +335,7 @@
             Nueva tarea
           </button>
         </div>
-        <p class="hv-slots-sub">Las más urgentes e importantes van primero. Completadas salen de esta lista y quedan en trazabilidad.</p>
+        <p class="hv-slots-sub">Las tareas sin fecha también quedan aquí. Arrastra una tarjeta a otro recuadro para cambiar su urgencia e importancia. Si quieres un aviso al mediodía, en la tarea elige aviso diario a las 12:00. Al completarlas salen de esta lista y quedan en trazabilidad, con fecha y hora.</p>
         <div id="orgError" class="login-error hidden"></div>
         <div id="orgMatriz" class="org-matriz"></div>
       </section>
@@ -347,14 +347,14 @@
           </select>
           <button type="button" id="btnOrgEventoNuevo" class="btn-action">Nuevo evento</button>
         </div>
-        <p class="hv-slots-sub">Mantenimientos, comités, impuestos, extintores, informes, nómina y PILA. Los vencimientos del personal aparecen desde el banco, sin volver a digitarlos.</p>
+        <p class="hv-slots-sub">Un evento mensual del día 5 queda marcado el día 5 de cada mes, también en noviembre y los siguientes. Con “Avisar” en 2, el correo sale 2 días antes y el día anterior. Nómina, PILA, servicios, seguridad, ascensor, mantenimientos, pólizas, impuestos e insumos se programan aquí. Contratos, cursos y pólizas del personal salen del banco de hojas de vida.</p>
         <div id="orgAgendaError" class="login-error hidden"></div>
         <div id="orgCalendario" class="org-cal"></div>
         <div id="orgAgendaLista" class="org-agenda-lista"></div>
       </section>
 
       <section id="orgPanelArchivo" class="hidden">
-        <p class="hv-slots-sub">Tareas ya cerradas, con fecha y hora, justificación o prueba cuando se pidió.</p>
+        <p class="hv-slots-sub">Tareas ya cerradas. Aunque no pidan justificación, queda la fecha y hora en que se marcaron como completadas, y la prueba si se adjuntó.</p>
         <div id="orgArchivoLista" class="org-archivo"></div>
       </section>
     </main>
@@ -844,12 +844,43 @@
         </div>
         <div class="form-group">
           <label for="orgAgendaAlerta">Avisar (días antes)</label>
-          <input id="orgAgendaAlerta" type="number" min="0" max="365" value="30" />
+          <input id="orgAgendaAlerta" type="number" min="0" max="365" value="2" />
+          <p class="field-hint">2 avisa dos días antes y el día anterior. 30 avisa con un mes.</p>
         </div>
+      </div>
+      <div class="hv-flags">
+        <label class="hv-flag" for="orgAgendaPrueba">
+          <span class="hv-flag-text">
+            <span class="hv-flag-name">Pedir prueba al marcarlo realizado</span>
+            <span class="hv-flag-desc">Útil en mantenimientos: archivo o descripción de lo hecho</span>
+          </span>
+          <input type="checkbox" id="orgAgendaPrueba" role="switch" />
+          <span class="hv-switch" aria-hidden="true"><span class="hv-switch-thumb"></span></span>
+        </label>
       </div>
       <div id="orgAgendaFormError" class="login-error hidden"></div>
       <button type="submit" class="btn-login">Guardar</button>
       <button type="button" id="btnOrgAgendaCerrar" class="btn-ghost">Cancelar</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgOrgRealizar" class="hv-dialog">
+    <form id="formOrgRealizar" class="login-form">
+      <h3>Marcar realizado</h3>
+      <p id="orgRealizarLead" class="panel-lead"></p>
+      <input type="hidden" id="orgRealizarId" />
+      <div class="form-group">
+        <label for="orgRealizarTexto">Cómo se realizó</label>
+        <textarea id="orgRealizarTexto" rows="3" maxlength="4000" placeholder="Describe lo realizado"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="orgRealizarArchivo">Prueba (PDF, JPG o PNG)</label>
+        <input id="orgRealizarArchivo" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" />
+      </div>
+      <p id="orgRealizarHint" class="field-hint"></p>
+      <div id="orgRealizarError" class="login-error hidden"></div>
+      <button type="submit" class="btn-login">Guardar realización</button>
+      <button type="button" id="btnOrgRealizarCerrar" class="btn-ghost">Cancelar</button>
     </form>
   </dialog>
 
@@ -872,7 +903,7 @@
 
   <input id="hvFotoArchivo" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
 
-  <script src="/js/app.js?v=20260915b" defer></script>
-  <script src="/js/organizador.js?v=20260915b" defer></script>
+  <script src="/js/app.js?v=20261008" defer></script>
+  <script src="/js/organizador.js?v=20261008" defer></script>
 </body>
 </html>
