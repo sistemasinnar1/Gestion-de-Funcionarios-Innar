@@ -291,9 +291,30 @@ async function recogerAlertas() {
   };
 }
 
-function listaHtml(items, linea) {
-  if (!items.length) return '<p style="margin:0;color:#64748b;">Ninguno.</p>';
-  return `<ul style="margin:0;padding-left:18px;line-height:1.55;">${items.map((item) => `<li>${linea(item)}</li>`).join('')}</ul>`;
+function fichasHtml(items, linea) {
+  if (!items.length) {
+    return '<div style="background:#f4f7f6;border-radius:12px;padding:10px 12px;color:#8aa09b;font-size:13px;">Nada por ahora</div>';
+  }
+  return items.map((item) => (
+    `<div style="background:#f4f7f6;border:1px solid #e5eeeb;border-radius:12px;padding:10px 12px;margin:0 0 8px;font-size:13px;line-height:1.4;color:#33413f;">${linea(item)}</div>`
+  )).join('');
+}
+
+function recuadroHtml({ titulo, total, color, cuerpo }) {
+  return `<div style="background:#ffffff;border:1px solid #e4eeeb;border-top:5px solid ${color};border-radius:18px;overflow:hidden;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr><td style="padding:14px 14px 4px;font-family:Segoe UI,Roboto,sans-serif;">
+        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${color};font-weight:800;">${escapeHtml(titulo)}</div>
+        <div style="font-size:30px;line-height:1.15;font-weight:800;color:#1c2b29;margin-top:2px;">${total}</div>
+      </td></tr>
+      <tr><td style="padding:6px 12px 14px;font-family:Segoe UI,Roboto,sans-serif;">${cuerpo}</td></tr>
+    </table>
+  </div>`;
+}
+
+function filaHtml(a, b, c) {
+  const celda = (html) => `<td class="col" width="33.33%" valign="top" style="width:33.33%;padding:7px;vertical-align:top;">${html}</td>`;
+  return `<tr>${celda(a)}${celda(b)}${celda(c)}</tr>`;
 }
 
 function armarMensaje(data) {
@@ -349,45 +370,90 @@ function armarMensaje(data) {
 
   const html = `<!doctype html>
 <html lang="es">
-<body style="margin:0;padding:0;background:#eef2f1;font-family:Segoe UI,Roboto,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eef2f1;padding:24px 12px;">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    @media only screen and (max-width:640px) {
+      .col { display:block !important; width:100% !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#e7efec;font-family:Segoe UI,Roboto,sans-serif;color:#1c2b29;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#e7efec;padding:28px 12px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8e7;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:760px;">
         <tr>
-          <td style="background:#2d4a47;color:#fff;padding:22px 28px;">
-            <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8;">Gestión Administrativa</div>
-            <div style="font-size:20px;font-weight:700;margin-top:4px;">Alertas del banco</div>
+          <td colspan="3" style="padding:4px 8px 18px;font-family:Segoe UI,Roboto,sans-serif;">
+            <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#5f7a76;font-weight:800;">INNAR</div>
+            <div style="font-size:28px;line-height:1.15;font-weight:800;color:#1c2b29;margin-top:4px;">Avisos del día</div>
+            <div style="margin-top:6px;color:#5f736f;font-size:14px;line-height:1.45;">Documentos, exámenes, preaviso u otrosí, y tareas. Cada grupo va en su recuadro.</div>
           </td>
         </tr>
+        ${filaHtml(
+          recuadroHtml({
+            titulo: 'Vencidos',
+            total: data.vencidos.length,
+            color: '#b42318',
+            cuerpo: fichasHtml(data.vencidos, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.persona)}</strong><br>${escapeHtml(r.requisito)} · venció ${escapeHtml(r.vence)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Por vencer',
+            total: data.porVencer.length,
+            color: '#b54708',
+            cuerpo: fichasHtml(data.porVencer, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.persona)}</strong><br>${escapeHtml(r.requisito)} · vence ${escapeHtml(r.vence)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Examen médico',
+            total: examen.length,
+            color: '#0f766e',
+            cuerpo: fichasHtml(examen, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.persona)}</strong><br>${escapeHtml(r.estado)} · ${escapeHtml(r.vence)}`)
+          })
+        )}
+        ${filaHtml(
+          recuadroHtml({
+            titulo: 'Preaviso u otrosí',
+            total: contratos.length,
+            color: '#1d4ed8',
+            cuerpo: fichasHtml(contratos, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.persona)}</strong><br>${escapeHtml(r.requisito)} · ${escapeHtml(r.vence)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Tareas vencidas',
+            total: tareasVencidas.length,
+            color: '#9f1239',
+            cuerpo: fichasHtml(tareasVencidas, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.titulo)}</strong><br>${escapeHtml(r.tematica)} · ${escapeHtml(r.vence)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Tareas para hoy',
+            total: tareasHoy.length,
+            color: '#b45309',
+            cuerpo: fichasHtml(tareasHoy, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.titulo)}</strong><br>${escapeHtml(r.tematica)}`)
+          })
+        )}
+        ${filaHtml(
+          recuadroHtml({
+            titulo: 'Agenda',
+            total: agendaOrg.length,
+            color: '#0f6e56',
+            cuerpo: fichasHtml(agendaOrg, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.titulo)}</strong><br>${escapeHtml(r.tipo)} · ${escapeHtml(r.estado)} · ${escapeHtml(r.vence)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Cumpleaños',
+            total: data.cumpleanos.length,
+            color: '#6d28d9',
+            cuerpo: fichasHtml(data.cumpleanos, (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.persona)}</strong><br>${escapeHtml(r.cuando)}`)
+          }),
+          recuadroHtml({
+            titulo: 'Archivos faltantes',
+            total: nArchivos,
+            color: '#9f1239',
+            cuerpo: fichasHtml(data.archivosFaltantes || [], (r) => `<strong style="color:#1c2b29;">${escapeHtml(r.tipo)}</strong><br>${escapeHtml(r.nombre)}`)
+          })
+        )}
         <tr>
-          <td style="padding:28px;">
-            <p style="margin:0 0 18px;color:#64748b;line-height:1.5;">
-              Resumen diario. Incluye documentos, examen periódico y, en contrato laboral, el pedido de preaviso u otrosí desde 60 días antes.
-            </p>
-            <p style="margin:0 0 8px;font-weight:800;color:#9f1239;">Vencidos (${data.vencidos.length})</p>
-            ${listaHtml(data.vencidos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (venció ${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#b45309;">Por vencer (${data.porVencer.length})</p>
-            ${listaHtml(data.porVencer, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (vence ${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#0f766e;">Examen médico periódico (${examen.length})</p>
-            ${listaHtml(examen, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#1d4ed8;">Preaviso u otrosí (${contratos.length})</p>
-            ${listaHtml(contratos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Tareas vencidas (${tareasVencidas.length})</p>
-            ${listaHtml(tareasVencidas, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tematica)} (${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#b45309;">Tareas para hoy (${tareasHoy.length})</p>
-            ${listaHtml(tareasHoy, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tematica)}`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#0f766e;">Agenda de calidad (${agendaOrg.length})</p>
-            ${listaHtml(agendaOrg, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tipo)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#5b21b6;">Cumpleaños esta semana (${data.cumpleanos.length})</p>
-            ${listaHtml(data.cumpleanos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.cuando)}`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Archivos faltantes en disco (${nArchivos})</p>
-            ${listaHtml(data.archivosFaltantes || [], (r) => `${escapeHtml(r.tipo)} — ${escapeHtml(r.nombre)}`)}
-            <p style="margin:18px 0 0;color:#64748b;">Fichas incompletas: <strong>${data.incompletos}</strong></p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:14px 28px;background:#f8faf9;color:#64748b;font-size:12px;">
-            Instituto Neurociencias de Nariño IPS S.A.S
+          <td colspan="3" style="padding:10px 8px 0;font-family:Segoe UI,Roboto,sans-serif;color:#5f736f;font-size:13px;">
+            Fichas incompletas: <strong style="color:#1c2b29;">${data.incompletos}</strong>
+            <span style="color:#8aa09b;"> · Instituto Neurociencias de Nariño IPS S.A.S</span>
           </td>
         </tr>
       </table>
