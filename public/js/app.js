@@ -782,14 +782,22 @@ function renderContratos(lista, readOnly) {
         .filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f))
         .sort()
         .reverse()[0];
+    const hoy = new Date();
+    const hoyIso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    const vigenciaPasada = Boolean(fin && fin < hoyIso);
+    const laboral = Boolean(hvFolderData?.progreso?.preaviso_laboral);
     if (prox === 'vencido') {
       alerta.hidden = false;
       alerta.className = 'hv-missing-chip';
-      alerta.innerHTML = `${ICON_ALERT}<span>La última vigencia del contrato está vencida${fin ? ` (${formatFecha(fin)})` : ''}</span>`;
+      alerta.innerHTML = laboral && !vigenciaPasada
+        ? `${ICON_ALERT}<span>Se venció el plazo para preavisar${fin ? `. La vigencia termina el ${formatFecha(fin)}` : ''}. Carga el preaviso o el otrosí.</span>`
+        : `${ICON_ALERT}<span>La vigencia terminó${fin ? ` el ${formatFecha(fin)}` : ''}${laboral ? ' y no hay preaviso ni otrosí nuevo' : ''}.</span>`;
     } else if (prox === 'por_vencer') {
       alerta.hidden = false;
       alerta.className = 'hv-missing-chip';
-      alerta.innerHTML = `${ICON_ALERT}<span>Última vigencia por vencer${fin ? ` el ${formatFecha(fin)}` : ''} (aviso 1 mes + 2 días)</span>`;
+      alerta.innerHTML = laboral
+        ? `${ICON_ALERT}<span>Hay que cargar el preaviso o el otrosí${fin ? `. La vigencia termina el ${formatFecha(fin)}` : ''}. El plazo es un poco antes de los 30 días.</span>`
+        : `${ICON_ALERT}<span>Última vigencia por vencer${fin ? ` el ${formatFecha(fin)}` : ''}.</span>`;
     } else {
       alerta.hidden = true;
     }
@@ -1571,23 +1579,45 @@ function setupHojasVida() {
     }
   });
 
-  $('btnHvContratoNuevo')?.addEventListener('click', () => {
-    if (!fichaActiva()) return;
-    $('formHvContrato')?.reset();
-    setError('hvContratoError', '');
+  function syncContratoTipo() {
+    const esPreaviso = $('hvContratoTipo')?.value === 'preaviso';
+    $('hvContratoInicioGroup')?.classList.toggle('hidden', esPreaviso);
+    $('hvContratoFinGroup')?.classList.toggle('hidden', esPreaviso);
+    const inicio = $('hvContratoInicio');
     const fin = $('hvContratoFin');
-    if (fin) fin.required = true;
-    $('dlgHvContrato').showModal();
-  });
-  $('btnHvContratoCerrar')?.addEventListener('click', () => $('dlgHvContrato')?.close());
-  $('hvContratoTipo')?.addEventListener('change', () => {
-    const esPreaviso = $('hvContratoTipo').value === 'preaviso';
-    const fin = $('hvContratoFin');
+    const firma = $('hvContratoFirma');
+    const firmaLabel = document.querySelector('label[for="hvContratoFirma"]');
+    const firmaHint = $('hvContratoFirmaHint');
+    if (inicio) {
+      inicio.required = !esPreaviso;
+      if (esPreaviso) inicio.value = '';
+    }
     if (fin) {
       fin.required = !esPreaviso;
       if (esPreaviso) fin.value = '';
     }
+    if (firma) firma.required = esPreaviso;
+    if (firmaLabel) {
+      firmaLabel.textContent = esPreaviso
+        ? 'Fecha en que se le hizo firmar el preaviso'
+        : 'Fecha de firma';
+    }
+    if (firmaHint) {
+      firmaHint.textContent = esPreaviso
+        ? 'Solo esta fecha. El preaviso no pide inicio ni terminación.'
+        : 'Informativa; no reemplaza la fecha de inicio.';
+    }
+  }
+
+  $('btnHvContratoNuevo')?.addEventListener('click', () => {
+    if (!fichaActiva()) return;
+    $('formHvContrato')?.reset();
+    setError('hvContratoError', '');
+    syncContratoTipo();
+    $('dlgHvContrato').showModal();
   });
+  $('btnHvContratoCerrar')?.addEventListener('click', () => $('dlgHvContrato')?.close());
+  $('hvContratoTipo')?.addEventListener('change', syncContratoTipo);
   $('formHvContrato')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!hvFolderId || !fichaActiva()) return;
@@ -1595,6 +1625,14 @@ function setupHojasVida() {
     if (!archivo) return;
     setError('hvContratoError', '');
     const tipo = $('hvContratoTipo').value;
+    if (tipo === 'preaviso' && !$('hvContratoFirma').value) {
+      setError('hvContratoError', 'Indica la fecha en que se le hizo firmar el preaviso');
+      return;
+    }
+    if (tipo !== 'preaviso' && !$('hvContratoInicio').value) {
+      setError('hvContratoError', 'Indica la fecha de inicio de contrato');
+      return;
+    }
     if (tipo !== 'preaviso' && !$('hvContratoFin').value) {
       setError('hvContratoError', 'Indica la fecha de terminación');
       return;

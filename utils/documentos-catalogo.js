@@ -27,8 +27,12 @@ const RIESGO_ARL = {
 };
 
 const ALERTA_DIAS = 30;
-/** Aviso de contrato: 1 mes + 2 días ≈ 32 días. */
+/** Aviso de contrato distinto al laboral: 1 mes + 2 días. */
 const CONTRATO_ALERTA_DIAS = 32;
+/** En contrato laboral el aviso para cargar preaviso u otrosí empieza a los 60 días. */
+const PREAVISO_AVISO_DIAS = 60;
+/** El documento debe estar un poco antes del plazo legal de 30 días. */
+const PREAVISO_LIMITE_DIAS = 35;
 
 /**
  * required:
@@ -194,6 +198,36 @@ function fechasTerminacionParaAlerta(contratosRows) {
     .filter(Boolean);
 }
 
+/**
+ * Vigente si faltan más de 60 días.
+ * Por vencer entre 60 y 35 días (hay que cargar preaviso u otrosí).
+ * Vencido si ya se pasó el límite, un poco antes de los 30 días, o si la vigencia ya terminó.
+ */
+function estadoPreaviso(terminacion) {
+  const days = daysUntil(terminacion);
+  if (days == null) return null;
+  if (days > PREAVISO_AVISO_DIAS) return 'vigente';
+  if (days >= PREAVISO_LIMITE_DIAS) return 'por_vencer';
+  return 'vencido';
+}
+
+/** Un preaviso firmado en esta vigencia cubre el ciclo; uno anterior no. */
+function preavisoCubreVigencia(contratosRows, terminacion) {
+  const fin = fechaIso(terminacion);
+  if (!fin) return false;
+  const desde = addDays(fin, -(PREAVISO_AVISO_DIAS + 30));
+  return (contratosRows || []).some((row) => {
+    if (!row || row.tipo !== 'preaviso') return false;
+    const firma = fechaIso(row.fecha_firma) || fechaIso(row.fecha_inicio);
+    return Boolean(firma && firma >= desde);
+  });
+}
+
+function limitePreaviso(terminacion) {
+  const fin = fechaIso(terminacion);
+  return fin ? addDays(fin, -PREAVISO_LIMITE_DIAS) : null;
+}
+
 function fechaIso(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     const y = value.getFullYear();
@@ -318,7 +352,14 @@ function progresoDe(checklist, extras = {}) {
   if (examenEstado === 'vencido') vencidos += 1;
   if (examenEstado === 'por_vencer') por_vencer += 1;
 
-  const contratoEstado = estadoFecha(extras.proxima_terminacion_contrato, CONTRATO_ALERTA_DIAS);
+  let contratoEstado = null;
+  if (extras.preaviso_cubierto) {
+    contratoEstado = 'vigente';
+  } else if (extras.preaviso_laboral) {
+    contratoEstado = estadoPreaviso(extras.proxima_terminacion_contrato);
+  } else {
+    contratoEstado = estadoFecha(extras.proxima_terminacion_contrato, CONTRATO_ALERTA_DIAS);
+  }
   if (contratoEstado === 'vencido') vencidos += 1;
   if (contratoEstado === 'por_vencer') por_vencer += 1;
 
@@ -330,6 +371,7 @@ function progresoDe(checklist, extras = {}) {
     por_vencer,
     examen_estado: examenEstado,
     contrato_estado: contratoEstado,
+    preaviso_laboral: Boolean(extras.preaviso_laboral),
     proxima_terminacion_contrato: extras.proxima_terminacion_contrato || null
   };
 }
@@ -398,7 +440,12 @@ module.exports = {
   estadoFecha,
   elegirTerminacion,
   fechasTerminacionParaAlerta,
+  estadoPreaviso,
+  preavisoCubreVigencia,
+  limitePreaviso,
   hoyIsoLocal,
   ALERTA_DIAS,
-  CONTRATO_ALERTA_DIAS
+  CONTRATO_ALERTA_DIAS,
+  PREAVISO_AVISO_DIAS,
+  PREAVISO_LIMITE_DIAS
 };

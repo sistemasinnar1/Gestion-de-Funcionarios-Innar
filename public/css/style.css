@@ -1905,6 +1905,12 @@ body {
   align-items: center;
 }
 
+.org-toolbar .btn-ghost {
+  width: auto;
+  margin-top: 0;
+  padding: 10px 14px;
+}
+
 .org-select-pill,
 #view-org .hv-toolbar select {
   appearance: none;
@@ -2103,6 +2109,38 @@ body {
   border: 1px solid var(--innar-border);
   border-radius: 14px;
   padding: 14px 16px;
+}
+
+.org-archivo-card.is-selecting {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.org-archivo-card.is-selecting .org-task {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.org-archivo-check {
+  display: flex;
+  align-items: center;
+  margin: 2px 0 0;
+  cursor: pointer;
+}
+
+.org-archivo-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--c-dark);
+  cursor: pointer;
+}
+
+.org-btn-danger {
+  background: linear-gradient(135deg, #9f1239 0%, #7f1d1d 100%);
+  box-shadow: 0 8px 20px rgba(159, 18, 57, 0.28);
 }
 
 .org-agenda-card h5,

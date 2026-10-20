@@ -4,9 +4,21 @@ const {
   estadoFecha,
   CONTRATO_ALERTA_DIAS,
   ALERTA_DIAS,
+  PREAVISO_AVISO_DIAS,
+  PREAVISO_LIMITE_DIAS,
   elegirTerminacion,
-  fechasTerminacionParaAlerta
+  fechasTerminacionParaAlerta,
+  estadoPreaviso,
+  preavisoCubreVigencia,
+  limitePreaviso
 } = require('./documentos-catalogo');
+
+function fechaCorta(iso) {
+  const d = fechaIso(iso);
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
 
 function nombreDe(row) {
   return `${row.nombres || ''} ${row.apellidos || ''}`.trim();
@@ -73,10 +85,11 @@ async function eventosDesdeBanco() {
     });
 
     const contratos = await db.query(
-      `SELECT c.id, c.funcionario_id, c.tipo, c.descripcion, c.fecha_terminacion, f.nombres, f.apellidos
+      `SELECT c.id, c.funcionario_id, c.tipo, c.descripcion, c.fecha_terminacion,
+              c.fecha_firma, c.fecha_inicio, f.nombres, f.apellidos, f.forma_vinculacion
        FROM contratos c
        INNER JOIN funcionarios f ON f.id = c.funcionario_id
-       WHERE f.activo = 1 AND c.fecha_terminacion IS NOT NULL`
+       WHERE f.activo = 1`
     );
     const byPerson = {};
     contratos.forEach((c) => {
@@ -87,16 +100,39 @@ async function eventosDesdeBanco() {
       const lista = byPerson[fid];
       const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(lista));
       if (!ultimaFin) return;
-      const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
       const c = lista
         .filter((row) => row.tipo !== 'preaviso' && fechaIso(row.fecha_terminacion) === ultimaFin)
         .sort((a, b) => Number(b.id) - Number(a.id))[0] || lista[0];
-      // Igual que el examen: siempre aparece la fecha de terminación vigente.
+      const laboral = c.forma_vinculacion === 'contrato_trabajo';
+      if (laboral) {
+        if (preavisoCubreVigencia(lista, ultimaFin)) return;
+        const st = estadoPreaviso(ultimaFin);
+        if (st !== 'por_vencer' && st !== 'vencido') return;
+        const limite = limitePreaviso(ultimaFin);
+        items.push({
+          id: `banco-preaviso-${fid}`,
+          fuente: 'banco',
+          clave: 'preaviso',
+          tipo: 'otro',
+          tipo_label: 'Preaviso u otrosí',
+          titulo: `Cargar preaviso u otrosí — ${nombreDe(c)}`,
+          detalle: st === 'vencido'
+            ? `Se venció el plazo para preavisar. La vigencia termina el ${fechaCorta(ultimaFin)}. Carga el preaviso firmado o el otrosí.`
+            : `La vigencia termina el ${fechaCorta(ultimaFin)}. Carga el preaviso o el otrosí antes del ${fechaCorta(limite)}, un poco antes de los 30 días.`,
+          fecha: limite,
+          periodicidad: 'ninguna',
+          alerta_dias: PREAVISO_AVISO_DIAS - PREAVISO_LIMITE_DIAS,
+          fecha_estado: st,
+          editable: false
+        });
+        return;
+      }
+      const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
       items.push({
         id: `banco-contrato-${fid}`,
         fuente: 'banco',
         tipo: 'otro',
-        tipo_label: c.tipo === 'otrosi' ? 'Otrosí laboral' : 'Contrato laboral',
+        tipo_label: c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato',
         titulo: `${c.tipo === 'otrosi' ? 'Otrosí' : 'Contrato'} — ${nombreDe(c)}`,
         detalle: c.descripcion || 'Última vigencia (prórrogas anteriores no se alertan)',
         fecha: ultimaFin,

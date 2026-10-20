@@ -7,6 +7,9 @@
   let calMes = new Date();
   let diaSel = '';
   let completarRequiere = false;
+  let archivoSeleccion = false;
+  const archivoMarcadas = new Set();
+  let arrastreId = '';
 
   function app() {
     return window.innarApp || {};
@@ -163,16 +166,45 @@
     }
   }
 
+  const ARCHIVO_HINT = 'Tareas ya cerradas. Aunque no pidan justificación, queda la fecha y hora en que se marcaron como completadas, y la prueba si se adjuntó.';
+
+  function syncArchivoEliminarUi() {
+    $('btnOrgArchivoEliminar')?.classList.toggle('hidden', archivoSeleccion);
+    $('btnOrgArchivoEliminarOk')?.classList.toggle('hidden', !archivoSeleccion);
+    $('btnOrgArchivoEliminarCancelar')?.classList.toggle('hidden', !archivoSeleccion);
+    const hint = $('orgArchivoHint');
+    if (hint) {
+      hint.textContent = archivoSeleccion
+        ? 'Marca una o varias tareas y pulsa Eliminar seleccionadas.'
+        : ARCHIVO_HINT;
+    }
+  }
+
+  function salirSeleccionArchivo() {
+    archivoSeleccion = false;
+    archivoMarcadas.clear();
+    syncArchivoEliminarUi();
+  }
+
   async function cargarArchivo() {
     try {
       const res = await apiFetch('/api/organizador/tareas?estado=completada');
       const data = await res.json();
       archivo = Array.isArray(data) ? data : [];
+      const vigentes = new Set(archivo.map((t) => String(t.id)));
+      archivoMarcadas.forEach((id) => {
+        if (!vigentes.has(id)) archivoMarcadas.delete(id);
+      });
       const el = $('orgArchivoLista');
       if (!el) return;
       el.innerHTML = archivo.length
-        ? archivo.map((t) => `<div class="org-archivo-card">${htmlTarea(t, { archivo: true })}</div>`).join('')
+        ? archivo.map((t) => `
+            <div class="org-archivo-card${archivoSeleccion ? ' is-selecting' : ''}">
+              ${archivoSeleccion ? `<label class="org-archivo-check"><input type="checkbox" data-org-archivo-check="${t.id}" ${archivoMarcadas.has(String(t.id)) ? 'checked' : ''} aria-label="Seleccionar tarea"/></label>` : ''}
+              ${htmlTarea(t, { archivo: true })}
+            </div>`).join('')
         : '<p class="hv-empty-table">Aún no hay tareas archivadas.</p>';
+      if (!archivo.length && archivoSeleccion) salirSeleccionArchivo();
     } catch (_) { /* ignore */ }
   }
 
@@ -318,6 +350,12 @@
     const tipo = $('orgFiltroAgendaTipo')?.value || '';
     let rows = filasDelMes().filter((e) => !tipo || e.tipo === tipo);
     if (diaSel) rows = rows.filter((e) => String(e.fecha || '').slice(0, 10) === diaSel);
+    const pendientes = agenda
+      .filter((e) => e.clave === 'preaviso' && (!tipo || e.tipo === tipo))
+      .map((e) => ({ ...e, fecha_estado: estadoDe(e.fecha, e.alerta_dias), fijo: true }))
+      .filter((e) => e.fecha_estado === 'por_vencer' || e.fecha_estado === 'vencido')
+      .filter((e) => !rows.some((row) => String(row.id) === String(e.id)));
+    rows = [...pendientes, ...rows];
     if (!rows.length) {
       el.innerHTML = '<p class="hv-empty-table">No hay eventos en este mes.</p>';
       return;
@@ -335,6 +373,7 @@
           <span class="org-pill ${e.fecha_estado === 'vencido' ? 'is-late' : (e.fecha_estado === 'por_vencer' ? 'is-soon' : '')}">${formatFecha(e.fecha)}</span>
           ${e.periodicidad && e.periodicidad !== 'ninguna' ? `<span class="org-pill">${escapeHtml(e.periodicidad_label)}</span>` : ''}
           ${Number(e.requiere_prueba) === 1 ? '<span class="org-pill">Pide prueba</span>' : ''}
+          ${e.fijo ? '<span class="org-pill is-soon">Sigue pendiente</span>' : ''}
           ${banco ? '<span class="org-pill is-banco">Banco HV</span>' : ''}
           ${esTarea ? '<span class="org-pill is-banco">Tarea</span>' : ''}
           ${e.ubicacion ? `<span class="org-pill">${escapeHtml(e.ubicacion)}</span>` : ''}
@@ -499,30 +538,37 @@
 
     $('orgMatriz')?.addEventListener('dragstart', (e) => {
       const card = e.target.closest('.org-task');
-      if (!card || e.target.closest('button')) {
+      if (!card || e.target.closest('button, a, input, label')) {
         e.preventDefault();
         return;
       }
+      arrastreId = card.getAttribute('data-id') || '';
       card.classList.add('is-dragging');
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', card.getAttribute('data-id') || '');
+      e.dataTransfer.setData('text/plain', arrastreId);
     });
     $('orgMatriz')?.addEventListener('dragend', (e) => {
+      arrastreId = '';
       e.target.closest?.('.org-task')?.classList.remove('is-dragging');
       document.querySelectorAll('.org-col.is-drop').forEach((col) => col.classList.remove('is-drop'));
     });
-    $('orgMatriz')?.addEventListener('dragover', (e) => {
-      if (!e.target.closest('.org-col')) return;
+    function marcarColumna(e) {
+      const col = e.target.closest('.org-col');
+      if (!col || !arrastreId) return;
       e.preventDefault();
-      document.querySelectorAll('.org-col.is-drop').forEach((col) => col.classList.remove('is-drop'));
-      e.target.closest('.org-col').classList.add('is-drop');
-    });
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.org-col.is-drop').forEach((item) => item.classList.remove('is-drop'));
+      col.classList.add('is-drop');
+    }
+    $('orgMatriz')?.addEventListener('dragenter', marcarColumna);
+    $('orgMatriz')?.addEventListener('dragover', marcarColumna);
     $('orgMatriz')?.addEventListener('drop', async (e) => {
       const col = e.target.closest('.org-col');
       if (!col) return;
       e.preventDefault();
       col.classList.remove('is-drop');
-      const id = e.dataTransfer.getData('text/plain');
+      const id = e.dataTransfer.getData('text/plain') || arrastreId;
+      arrastreId = '';
       const q = col.getAttribute('data-q');
       const niveles = {
         hacer: [4, 4],
@@ -542,9 +588,12 @@
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError('orgError', data.error || 'No se pudo mover la tarea');
+          return;
         }
+        setError('orgError', '');
       } catch (_) {
         setError('orgError', 'Error de conexión');
+        return;
       }
       cargarPendientes();
     });
@@ -582,6 +631,56 @@
     $('orgArchivoLista')?.addEventListener('click', (e) => {
       const prueba = e.target.closest('[data-org-prueba]');
       if (prueba) window.open(`/api/organizador/tareas/${prueba.getAttribute('data-org-prueba')}/prueba`, '_blank');
+    });
+    $('orgArchivoLista')?.addEventListener('change', (e) => {
+      const box = e.target.closest('[data-org-archivo-check]');
+      if (!box) return;
+      const id = box.getAttribute('data-org-archivo-check');
+      if (box.checked) archivoMarcadas.add(id);
+      else archivoMarcadas.delete(id);
+    });
+    $('btnOrgArchivoEliminar')?.addEventListener('click', () => {
+      setError('orgArchivoError', '');
+      if (!archivo.length) {
+        setError('orgArchivoError', 'No hay tareas archivadas para eliminar');
+        return;
+      }
+      archivoSeleccion = true;
+      syncArchivoEliminarUi();
+      cargarArchivo();
+    });
+    $('btnOrgArchivoEliminarCancelar')?.addEventListener('click', () => {
+      setError('orgArchivoError', '');
+      salirSeleccionArchivo();
+      cargarArchivo();
+    });
+    $('btnOrgArchivoEliminarOk')?.addEventListener('click', async () => {
+      const ids = [...archivoMarcadas];
+      if (!ids.length) {
+        setError('orgArchivoError', 'Selecciona al menos una tarea');
+        return;
+      }
+      const texto = ids.length === 1
+        ? '¿Eliminar esta tarea de la trazabilidad?'
+        : `¿Eliminar estas ${ids.length} tareas de la trazabilidad?`;
+      if (!confirm(texto)) return;
+      setError('orgArchivoError', '');
+      try {
+        for (const id of ids) {
+          const res = await apiFetch(`/api/organizador/tareas/${id}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setError('orgArchivoError', data.error || 'No se pudo eliminar la tarea');
+            break;
+          }
+          archivoMarcadas.delete(id);
+        }
+      } catch (_) {
+        setError('orgArchivoError', 'Error de conexión');
+      }
+      if (!archivoMarcadas.size) salirSeleccionArchivo();
+      cargarArchivo();
+      pintarHomeOrg();
     });
 
     $('btnOrgCompletarCerrar')?.addEventListener('click', () => $('dlgOrgCompletar')?.close());

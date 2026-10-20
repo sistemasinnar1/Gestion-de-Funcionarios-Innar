@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <meta name="app-version" content="dev"/>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=20261019">
 </head>
 <body>
   <div id="updateBanner" class="update-banner hidden" role="status">
@@ -270,7 +270,7 @@
         <div class="hv-panel-head">
           <div>
             <h3 class="hv-section-title">Contrato, otrosíes y preaviso</h3>
-            <p class="hv-slots-sub">Fecha de inicio y terminación. El aviso usa solo la última vigencia (prórrogas anteriores no se alertan). Aviso: 1 mes + 2 días.</p>
+            <p class="hv-slots-sub">En contrato laboral, desde 60 días antes del vencimiento hay que cargar el preaviso o el otrosí. El plazo vence un poco antes de los 30 días. El preaviso solo pide la fecha en que se firmó.</p>
             <div id="hvContratoAlerta" class="hv-missing-chip hv-panel-alert" hidden></div>
           </div>
           <button type="button" id="btnHvContratoNuevo" class="btn-soft">Agregar contrato / otrosí / preaviso</button>
@@ -347,14 +347,20 @@
           </select>
           <button type="button" id="btnOrgEventoNuevo" class="btn-action">Nuevo evento</button>
         </div>
-        <p class="hv-slots-sub">Un evento mensual del día 5 queda marcado el día 5 de cada mes, también en noviembre y los siguientes. Con “Avisar” en 2, el correo sale 2 días antes y el día anterior. Nómina, PILA, servicios, seguridad, ascensor, mantenimientos, pólizas, impuestos e insumos se programan aquí. Contratos, cursos y pólizas del personal salen del banco de hojas de vida.</p>
+        <p class="hv-slots-sub">Un evento mensual del día 5 queda marcado el día 5 de cada mes, también en noviembre y los siguientes. Con “Avisar” en 2, el correo sale 2 días antes y el día anterior. Nómina, PILA, servicios, seguridad, ascensor, mantenimientos, pólizas, impuestos e insumos se programan aquí. Contratos, cursos y pólizas del personal salen del banco de hojas de vida. Si falta el preaviso o el otrosí, el aviso queda visible hasta que se cargue.</p>
         <div id="orgAgendaError" class="login-error hidden"></div>
         <div id="orgCalendario" class="org-cal"></div>
         <div id="orgAgendaLista" class="org-agenda-lista"></div>
       </section>
 
       <section id="orgPanelArchivo" class="hidden">
-        <p class="hv-slots-sub">Tareas ya cerradas. Aunque no pidan justificación, queda la fecha y hora en que se marcaron como completadas, y la prueba si se adjuntó.</p>
+        <div class="hv-toolbar org-toolbar">
+          <button type="button" id="btnOrgArchivoEliminar" class="btn-action">Eliminar</button>
+          <button type="button" id="btnOrgArchivoEliminarOk" class="btn-action org-btn-danger hidden">Eliminar seleccionadas</button>
+          <button type="button" id="btnOrgArchivoEliminarCancelar" class="btn-ghost hidden">Cancelar</button>
+        </div>
+        <p id="orgArchivoHint" class="hv-slots-sub">Tareas ya cerradas. Aunque no pidan justificación, queda la fecha y hora en que se marcaron como completadas, y la prueba si se adjuntó.</p>
+        <div id="orgArchivoError" class="login-error hidden"></div>
         <div id="orgArchivoLista" class="org-archivo"></div>
       </section>
     </main>
@@ -617,19 +623,19 @@
         <label for="hvContratoDesc">Descripción (opcional)</label>
         <input id="hvContratoDesc" maxlength="255" />
       </div>
-      <div class="form-group">
+      <div class="form-group" id="hvContratoInicioGroup">
         <label for="hvContratoInicio">Fecha de inicio de contrato</label>
         <input id="hvContratoInicio" type="date" required />
       </div>
       <div class="form-group" id="hvContratoFinGroup">
         <label for="hvContratoFin">Fecha de terminación</label>
-        <input id="hvContratoFin" type="date" />
-        <p class="field-hint">Se avisará 32 días antes (1 mes + 2 días) según la última vigencia.</p>
+        <input id="hvContratoFin" type="date" required />
+        <p class="field-hint">En contrato laboral se pide preaviso u otrosí desde 60 días antes. El plazo vence un poco antes de los 30 días.</p>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="hvContratoFirmaGroup">
         <label for="hvContratoFirma">Fecha de firma</label>
         <input id="hvContratoFirma" type="date" />
-        <p class="field-hint">Informativa; no reemplaza la fecha de inicio.</p>
+        <p class="field-hint" id="hvContratoFirmaHint">Informativa; no reemplaza la fecha de inicio.</p>
       </div>
       <div class="form-group">
         <label for="hvContratoArchivo">Archivo</label>
@@ -903,7 +909,7 @@
 
   <input id="hvFotoArchivo" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
 
-  <script src="/js/app.js?v=20261008" defer></script>
-  <script src="/js/organizador.js?v=20261008" defer></script>
+  <script src="/js/app.js?v=20261020" defer></script>
+  <script src="/js/organizador.js?v=20261020" defer></script>
 </body>
 </html>

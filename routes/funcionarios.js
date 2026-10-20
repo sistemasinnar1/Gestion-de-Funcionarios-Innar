@@ -25,7 +25,8 @@ const {
   fechaIso,
   proximoExamenDesde,
   elegirTerminacion,
-  fechasTerminacionParaAlerta
+  fechasTerminacionParaAlerta,
+  preavisoCubreVigencia
 } = require('../utils/documentos-catalogo');
 const { empaquetarPdf } = require('../utils/pdf-pack');
 const { calcularVacaciones, fechaInicioContinuidad, MAX_DIAS_PAGO } = require('../utils/vacaciones');
@@ -280,20 +281,12 @@ async function proximaTerminacionContrato(id) {
   return elegirTerminacion(fechasTerminacionParaAlerta(rows));
 }
 
-function mapearTerminacionesPorPersona(rows) {
-  const byPerson = {};
-  rows.forEach((r) => {
-    if (r.tipo === 'preaviso') return;
-    const fecha = fechaIso(r.fecha_terminacion);
-    if (!fecha) return;
-    if (!byPerson[r.funcionario_id]) byPerson[r.funcionario_id] = [];
-    byPerson[r.funcionario_id].push(fecha);
-  });
-  const result = {};
-  Object.keys(byPerson).forEach((fid) => {
-    result[fid] = elegirTerminacion(byPerson[fid]);
-  });
-  return result;
+function extrasDeContrato(forma, contratos, fin) {
+  const laboral = forma === 'contrato_trabajo';
+  return {
+    preaviso_laboral: laboral,
+    preaviso_cubierto: Boolean(laboral && fin && preavisoCubreVigencia(contratos, fin))
+  };
 }
 
 async function resumenPersonas(rows) {
@@ -308,9 +301,9 @@ async function resumenPersonas(rows) {
     ids
   );
   const contratos = await db.query(
-    `SELECT funcionario_id, tipo, fecha_terminacion
+    `SELECT funcionario_id, tipo, fecha_terminacion, fecha_firma, fecha_inicio
      FROM contratos
-     WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
+     WHERE funcionario_id IN (${placeholders})`,
     ids
   );
   const byPerson = {};
@@ -318,14 +311,20 @@ async function resumenPersonas(rows) {
     if (!byPerson[d.funcionario_id]) byPerson[d.funcionario_id] = [];
     byPerson[d.funcionario_id].push(d);
   });
-  const terminaciones = mapearTerminacionesPorPersona(contratos);
+  const contratosPorPersona = {};
+  contratos.forEach((c) => {
+    if (!contratosPorPersona[c.funcionario_id]) contratosPorPersona[c.funcionario_id] = [];
+    contratosPorPersona[c.funcionario_id].push(c);
+  });
   return rows.map((row) => {
     const checklist = armarChecklist(row.tipo_persona, byPerson[row.id] || [], row);
-    const proxima_terminacion_contrato = terminaciones[row.id] || null;
+    const listaContratos = contratosPorPersona[row.id] || [];
+    const proxima_terminacion_contrato = elegirTerminacion(fechasTerminacionParaAlerta(listaContratos));
     const progreso = progresoDe(checklist, {
       proximo_examen_medico: row.proximo_examen_medico || null,
       proxima_terminacion_contrato,
-      examen_requerido: row.forma_vinculacion === 'contrato_trabajo'
+      examen_requerido: row.forma_vinculacion === 'contrato_trabajo',
+      ...extrasDeContrato(row.forma_vinculacion, listaContratos, proxima_terminacion_contrato)
     });
     return {
       ...presentarFuncionario(row),
@@ -659,7 +658,8 @@ router.get('/funcionarios/:id', requireAuth, async (req, res) => {
       progreso: progresoDe(requisitos, {
         proximo_examen_medico: funcionario.proximo_examen_medico || null,
         proxima_terminacion_contrato,
-        examen_requerido: funcionario.forma_vinculacion === 'contrato_trabajo'
+        examen_requerido: funcionario.forma_vinculacion === 'contrato_trabajo',
+        ...extrasDeContrato(funcionario.forma_vinculacion, contratos, proxima_terminacion_contrato)
       }),
       riesgos_arl: RIESGO_ARL
     });
@@ -1038,11 +1038,15 @@ router.post('/funcionarios/:id/contratos', requireAuth, (req, res) => {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'El tipo debe ser contrato, otrosí o preaviso' });
     }
-    if (!fecha_inicio) {
+    if (tipo === 'preaviso') {
+      if (!fecha_firma) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: 'Indica la fecha en que se le hizo firmar el preaviso' });
+      }
+    } else if (!fecha_inicio) {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Indica la fecha de inicio de contrato' });
-    }
-    if (tipo !== 'preaviso' && !fecha_terminacion) {
+    } else if (!fecha_terminacion) {
       fs.unlink(req.file.path, () => {});
       return res.status(400).json({ error: 'Indica la fecha de terminación' });
     }
@@ -1069,9 +1073,9 @@ router.post('/funcionarios/:id/contratos', requireAuth, (req, res) => {
           descripcion,
           req.file.originalname,
           rel,
-          fecha_inicio,
+          tipo === 'preaviso' ? null : fecha_inicio,
           fecha_firma,
-          fecha_terminacion,
+          tipo === 'preaviso' ? null : fecha_terminacion,
           req.session.usuarioId
         ]
       );

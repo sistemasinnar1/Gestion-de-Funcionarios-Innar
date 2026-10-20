@@ -306,15 +306,15 @@ router.patch('/organizador/tareas/:id', requireAuth, async (req, res) => {
         c.titulo || null,
         c.detalle !== undefined ? c.detalle : row.detalle,
         c.tematica || null,
-        c.urgencia || null,
-        c.importancia || null,
+        c.urgencia ?? null,
+        c.importancia ?? null,
         c.fecha_cumplimiento !== undefined ? c.fecha_cumplimiento : row.fecha_cumplimiento,
-        c.requiere_prueba,
+        c.requiere_prueba ?? null,
         row.padre_id ? 0 : (c.recordar_tarde != null ? c.recordar_tarde : row.recordar_tarde),
-        row.padre_id ? 'ninguno' : (c.aviso_frecuencia || null),
+        row.padre_id ? 'ninguno' : (c.aviso_frecuencia ?? null),
         row.padre_id
           ? null
-          : (c.aviso_hora !== undefined ? c.aviso_hora : row.aviso_hora),
+          : (c.aviso_hora !== undefined ? c.aviso_hora : (row.aviso_hora ?? null)),
         id
       ]
     );

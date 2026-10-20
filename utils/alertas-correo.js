@@ -2,7 +2,17 @@ const db = require('./db-mysql');
 const logger = require('./logger');
 const mailer = require('./mailer');
 const { auditarArchivos } = require('./respaldo');
-const { armarChecklist, ALERTA_DIAS, CONTRATO_ALERTA_DIAS, estadoFecha, elegirTerminacion, fechasTerminacionParaAlerta } = require('./documentos-catalogo');
+const {
+  armarChecklist,
+  ALERTA_DIAS,
+  CONTRATO_ALERTA_DIAS,
+  estadoFecha,
+  elegirTerminacion,
+  fechasTerminacionParaAlerta,
+  estadoPreaviso,
+  preavisoCubreVigencia,
+  limitePreaviso
+} = require('./documentos-catalogo');
 const { eventosDesdeBanco } = require('./organizador-banco');
 const { enriquecerEvento, TEMATICAS, diasAvisoFrecuencia, horasAvisoFrecuencia, avisoHoraValida, avisoUsaHoraFija } = require('./organizador-catalogo');
 const { fechaIso } = require('./documentos-catalogo');
@@ -104,7 +114,7 @@ async function recogerAlertasOrganizador() {
     const agenda = [
       ...eventos.map((e) => enriquecerEvento(e)),
       ...(await eventosDesdeBanco())
-    ].filter((e) => e.fecha_estado === 'vencido' || e.fecha_estado === 'por_vencer')
+    ].filter((e) => e.clave !== 'preaviso' && (e.fecha_estado === 'vencido' || e.fecha_estado === 'por_vencer'))
       .map((e) => ({
         titulo: e.titulo,
         tipo: e.tipo_label,
@@ -150,9 +160,9 @@ async function recogerAlertas() {
     ids
   );
   const contratosRows = await db.query(
-    `SELECT id, funcionario_id, fecha_terminacion, tipo, descripcion
+    `SELECT id, funcionario_id, fecha_terminacion, fecha_firma, fecha_inicio, tipo, descripcion
      FROM contratos
-     WHERE funcionario_id IN (${placeholders}) AND fecha_terminacion IS NOT NULL`,
+     WHERE funcionario_id IN (${placeholders})`,
     ids
   );
   const polizasRows = await db.query(
@@ -227,11 +237,27 @@ async function recogerAlertas() {
         estado: examEstado
       });
     }
-    const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(contratosBy[p.id] || []));
-    if (ultimaFin) {
+    const listaContratos = contratosBy[p.id] || [];
+    const ultimaFin = elegirTerminacion(fechasTerminacionParaAlerta(listaContratos));
+    if (p.forma_vinculacion === 'contrato_trabajo') {
+      if (ultimaFin && !preavisoCubreVigencia(listaContratos, ultimaFin)) {
+        const st = estadoPreaviso(ultimaFin);
+        if (st === 'vencido' || st === 'por_vencer') {
+          const limite = limitePreaviso(ultimaFin);
+          contratos.push({
+            persona,
+            requisito: st === 'vencido'
+              ? 'Plazo de preaviso vencido: carga el preaviso o el otrosí'
+              : 'Cargar preaviso u otrosí',
+            vence: `vigencia ${formatFecha(ultimaFin)}, plazo ${formatFecha(limite)}`,
+            estado: st
+          });
+        }
+      }
+    } else if (ultimaFin) {
       const st = estadoFecha(ultimaFin, CONTRATO_ALERTA_DIAS);
       if (st === 'vencido' || st === 'por_vencer') {
-        const ultimo = (contratosBy[p.id] || [])
+        const ultimo = listaContratos
           .filter((c) => c.tipo !== 'preaviso' && String(c.fecha_terminacion || '').slice(0, 10) === ultimaFin)
           .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0];
         contratos.push({
@@ -298,7 +324,7 @@ function armarMensaje(data) {
     `Examen médico periódico (${examen.length}):`,
     ...examen.map((r) => `- ${r.persona}: ${r.estado} (${r.vence})`),
     '',
-    `Contratos / otrosíes (${contratos.length}, aviso ${CONTRATO_ALERTA_DIAS} días):`,
+    `Preaviso u otrosí (${contratos.length}; en contrato laboral avisa desde 60 días y el plazo es un poco antes de los 30):`,
     ...contratos.map((r) => `- ${r.persona}: ${r.requisito} ${r.estado} (${r.vence})`),
     '',
     `Tareas vencidas (${tareasVencidas.length}):`,
@@ -336,7 +362,7 @@ function armarMensaje(data) {
         <tr>
           <td style="padding:28px;">
             <p style="margin:0 0 18px;color:#64748b;line-height:1.5;">
-              Resumen diario. Incluye documentos, examen periódico y contratos (aviso ${CONTRATO_ALERTA_DIAS} días).
+              Resumen diario. Incluye documentos, examen periódico y, en contrato laboral, el pedido de preaviso u otrosí desde 60 días antes.
             </p>
             <p style="margin:0 0 8px;font-weight:800;color:#9f1239;">Vencidos (${data.vencidos.length})</p>
             ${listaHtml(data.vencidos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (venció ${escapeHtml(r.vence)})`)}
@@ -344,7 +370,7 @@ function armarMensaje(data) {
             ${listaHtml(data.porVencer, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} (vence ${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#0f766e;">Examen médico periódico (${examen.length})</p>
             ${listaHtml(examen, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
-            <p style="margin:18px 0 8px;font-weight:800;color:#1d4ed8;">Contratos / otrosíes (${contratos.length})</p>
+            <p style="margin:18px 0 8px;font-weight:800;color:#1d4ed8;">Preaviso u otrosí (${contratos.length})</p>
             ${listaHtml(contratos, (r) => `<strong>${escapeHtml(r.persona)}</strong> — ${escapeHtml(r.requisito)} ${escapeHtml(r.estado)} (${escapeHtml(r.vence)})`)}
             <p style="margin:18px 0 8px;font-weight:800;color:#9f1239;">Tareas vencidas (${tareasVencidas.length})</p>
             ${listaHtml(tareasVencidas, (r) => `<strong>${escapeHtml(r.titulo)}</strong> — ${escapeHtml(r.tematica)} (${escapeHtml(r.vence)})`)}
