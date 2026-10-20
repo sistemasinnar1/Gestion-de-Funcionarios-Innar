@@ -344,18 +344,42 @@
     el.innerHTML = html;
   }
 
+  function fechaEv(e) {
+    return String(e.fecha || '').slice(0, 10);
+  }
+
   function pintarAgendaLista() {
     const el = $('orgAgendaLista');
     if (!el) return;
     const tipo = $('orgFiltroAgendaTipo')?.value || '';
-    let rows = filasDelMes().filter((e) => !tipo || e.tipo === tipo);
-    if (diaSel) rows = rows.filter((e) => String(e.fecha || '').slice(0, 10) === diaSel);
+    const pasaTipo = (e) => !tipo || e.tipo === tipo;
+    const mes = filasDelMes().filter(pasaTipo);
     const pendientes = agenda
-      .filter((e) => e.clave === 'preaviso' && (!tipo || e.tipo === tipo))
+      .filter((e) => e.clave === 'preaviso' && pasaTipo(e))
       .map((e) => ({ ...e, fecha_estado: estadoDe(e.fecha, e.alerta_dias), fijo: true }))
-      .filter((e) => e.fecha_estado === 'por_vencer' || e.fecha_estado === 'vencido')
-      .filter((e) => !rows.some((row) => String(row.id) === String(e.id)));
-    rows = [...pendientes, ...rows];
+      .filter((e) => e.fecha_estado === 'por_vencer' || e.fecha_estado === 'vencido');
+    let rows;
+    if (diaSel) {
+      const vistos = new Set();
+      const unico = (e) => {
+        const clave = `${e.id}|${fechaEv(e)}`;
+        if (vistos.has(clave)) return false;
+        vistos.add(clave);
+        return true;
+      };
+      const delDia = [...mes, ...pendientes].filter((e) => fechaEv(e) === diaSel && unico(e));
+      const atrasadas = agenda
+        .filter((e) => e.fuente === 'tarea' && pasaTipo(e) && fechaEv(e) && fechaEv(e) < diaSel)
+        .map((e) => ({ ...e, fecha_estado: estadoDe(e.fecha, e.alerta_dias) }));
+      const anteriores = [...mes, ...pendientes, ...atrasadas]
+        .filter((e) => fechaEv(e) < diaSel && unico(e));
+      anteriores.sort((a, b) => fechaEv(b).localeCompare(fechaEv(a))
+        || String(a.titulo || '').localeCompare(String(b.titulo || ''), 'es'));
+      rows = [...delDia, ...anteriores];
+    } else {
+      const idsMes = new Set(mes.map((e) => String(e.id)));
+      rows = [...pendientes.filter((e) => !idsMes.has(String(e.id))), ...mes];
+    }
     if (!rows.length) {
       el.innerHTML = '<p class="hv-empty-table">No hay eventos en este mes.</p>';
       return;

@@ -18,6 +18,8 @@ const { enriquecerEvento, TEMATICAS, diasAvisoFrecuencia, horasAvisoFrecuencia, 
 const { fechaIso } = require('./documentos-catalogo');
 
 const JOB_KEY = 'alertas_digest_dia';
+const JOB_HORAS_KEY = 'alertas_digest_horas';
+const HORAS_DIGEST = [8, 14, 21];
 
 function formatFecha(iso) {
   const d = String(iso || '').slice(0, 10);
@@ -57,6 +59,34 @@ async function marcarEnviadoHoy() {
     `INSERT INTO jobs_estado (clave, valor) VALUES (?, ?)
      ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
     [JOB_KEY, hoyIso()]
+  );
+}
+
+function horasMarcadas(valor, hoy) {
+  const [dia, lista] = String(valor || '').split(':');
+  if (dia !== hoy) return new Set();
+  return new Set(
+    String(lista || '')
+      .split(',')
+      .map((n) => Number(n))
+      .filter((n) => HORAS_DIGEST.includes(n))
+  );
+}
+
+async function horaDigestYaEnviada(hora, hoy = hoyIso()) {
+  const row = await db.queryOne('SELECT valor FROM jobs_estado WHERE clave = ?', [JOB_HORAS_KEY]);
+  return horasMarcadas(row?.valor, hoy).has(hora);
+}
+
+async function marcarHoraDigest(hora, hoy = hoyIso()) {
+  const row = await db.queryOne('SELECT valor FROM jobs_estado WHERE clave = ?', [JOB_HORAS_KEY]);
+  const horas = horasMarcadas(row?.valor, hoy);
+  horas.add(hora);
+  const valor = `${hoy}:${[...horas].sort((a, b) => a - b).join(',')}`;
+  await db.execute(
+    `INSERT INTO jobs_estado (clave, valor) VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
+    [JOB_HORAS_KEY, valor]
   );
 }
 
@@ -475,12 +505,35 @@ function armarMensaje(data) {
   return { subject, text, html, nAlertas };
 }
 
-async function enviarDigestAlertas({ forzar = false } = {}) {
+let envioDigest = null;
+
+async function enviarDigestAlertas(opts = {}) {
+  while (envioDigest) {
+    try { await envioDigest; } catch (_) { /* el intento anterior ya quedó registrado */ }
+  }
+  const actual = enviarDigestAlertasAhora(opts);
+  envioDigest = actual;
+  try {
+    return await actual;
+  } finally {
+    if (envioDigest === actual) envioDigest = null;
+  }
+}
+
+async function enviarDigestAlertasAhora({ forzar = false } = {}) {
   if (!mailer.isConfigured()) {
     return { ok: false, reason: 'smtp_no_configurado' };
   }
   try {
-    if (!forzar && await yaEnviadoHoy()) {
+    const hora = partesBogota().hour;
+    if (forzar) {
+      if (!HORAS_DIGEST.includes(hora)) {
+        return { ok: true, skipped: true, reason: 'fuera_de_hora' };
+      }
+      if (await horaDigestYaEnviada(hora)) {
+        return { ok: true, skipped: true, reason: 'ya_enviado_hora' };
+      }
+    } else if (await yaEnviadoHoy()) {
       return { ok: true, skipped: true, reason: 'ya_enviado_hoy' };
     }
     const data = await recogerAlertas();
@@ -492,6 +545,7 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
       && !(data.tareasHoy || []).length
       && !(data.agendaOrg || []).length) {
       await marcarEnviadoHoy();
+      if (HORAS_DIGEST.includes(hora)) await marcarHoraDigest(hora);
       return { ok: true, skipped: true, reason: 'sin_alertas' };
     }
     const destinos = await destinatarios();
@@ -509,9 +563,13 @@ async function enviarDigestAlertas({ forzar = false } = {}) {
       });
       if (result.sent) enviados += 1;
     }
-    if (enviados > 0) await marcarEnviadoHoy();
+    if (enviados > 0) {
+      await marcarEnviadoHoy();
+      if (HORAS_DIGEST.includes(hora)) await marcarHoraDigest(hora);
+    }
     logger.info('[ALERTAS] Digest enviado', {
       enviados,
+      hora,
       vencidos: data.vencidos.length,
       porVencer: data.porVencer.length
     });
@@ -671,19 +729,56 @@ async function enviarRecordatorioTarde({ forzar = false } = {}) {
   }
 }
 
+function partesBogota(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).formatToParts(date);
+  const num = (type) => Number(parts.find((p) => p.type === type)?.value);
+  return { hour: num('hour'), minute: num('minute'), second: num('second') };
+}
+
+function msHastaSiguienteDigest(date = new Date()) {
+  const { hour, minute, second } = partesBogota(date);
+  const actual = hour * 3600 + minute * 60 + second;
+  const metas = HORAS_DIGEST.map((h) => h * 3600 + 5);
+  const futura = metas.find((meta) => meta > actual);
+  const delta = futura != null ? futura - actual : (24 * 3600 - actual) + metas[0];
+  return Math.max(delta, 1) * 1000;
+}
+
+async function enviarDigestEnHoras() {
+  return enviarDigestAlertas({ forzar: true });
+}
+
+let alertasIniciadas = false;
+
 function iniciarAlertasCorreo() {
+  if (alertasIniciadas) return;
+  alertasIniciadas = true;
   const delay = Number(process.env.ALERTAS_DELAY_MS || 45000);
   const every = Number(process.env.ALERTAS_INTERVAL_MS || 6 * 60 * 60 * 1000);
+  const programarHoras = () => {
+    setTimeout(() => {
+      enviarDigestEnHoras().catch(() => {}).finally(programarHoras);
+    }, msHastaSiguienteDigest());
+  };
   setTimeout(() => {
     enviarDigestAlertas().catch(() => {});
+    enviarDigestEnHoras().catch(() => {});
     enviarRecordatorioTarde().catch(() => {});
   }, delay);
   setInterval(() => {
     enviarDigestAlertas().catch(() => {});
   }, every);
   setInterval(() => {
+    enviarDigestEnHoras().catch(() => {});
     enviarRecordatorioTarde().catch(() => {});
   }, 15 * 60 * 1000);
+  programarHoras();
 }
 
 module.exports = { enviarDigestAlertas, iniciarAlertasCorreo, recogerAlertas, enviarRecordatorioTarde };
