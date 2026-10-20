@@ -140,7 +140,7 @@ async function recogerAlertas() {
       vencidos: [],
       porVencer: [],
       cumpleanos: [],
-      incompletos: 0,
+      incompletos: [],
       examen: [],
       contratos: [],
       tareasVencidas: org.tareasVencidas,
@@ -192,13 +192,13 @@ async function recogerAlertas() {
   const cumpleanos = [];
   const examen = [];
   const contratos = [];
-  let incompletos = 0;
+  const incompletos = [];
 
   personas.forEach((p) => {
     const checklist = armarChecklist(p.tipo_persona, byPerson[p.id] || [], p);
     const faltan = checklist.filter((item) => item.required && item.estado !== 'cargado' && item.estado !== 'por_vencer').length;
-    if (faltan > 0) incompletos += 1;
     const persona = nombreDe(p);
+    if (faltan > 0) incompletos.push(persona);
     checklist.forEach((item) => {
       if (!item.required) return;
       if (item.estado !== 'vencido' && item.estado !== 'por_vencer') return;
@@ -291,6 +291,15 @@ async function recogerAlertas() {
   };
 }
 
+function nombresFichasHtml(nombres) {
+  if (!nombres.length) {
+    return '<div style="background:#f4f7f6;border-radius:12px;padding:10px 12px;color:#8aa09b;font-size:13px;">Ninguna</div>';
+  }
+  return nombres.map((nombre) => (
+    `<span style="display:inline-block;background:#ffffff;border:1px solid #e4eeeb;border-radius:999px;padding:7px 12px;margin:0 8px 8px 0;font-size:13px;font-weight:700;color:#1c2b29;">${escapeHtml(nombre)}</span>`
+  )).join('');
+}
+
 function fichasHtml(items, linea) {
   if (!items.length) {
     return '<div style="background:#f4f7f6;border-radius:12px;padding:10px 12px;color:#8aa09b;font-size:13px;">Nada por ahora</div>';
@@ -324,6 +333,7 @@ function armarMensaje(data) {
   const tareasVencidas = data.tareasVencidas || [];
   const tareasHoy = data.tareasHoy || [];
   const agendaOrg = data.agendaOrg || [];
+  const fichas = data.incompletos || [];
   const nAlertas = data.vencidos.length + data.porVencer.length + data.cumpleanos.length
     + nArchivos + examen.length + contratos.length
     + tareasVencidas.length + tareasHoy.length + agendaOrg.length;
@@ -360,7 +370,8 @@ function armarMensaje(data) {
     `Cumpleaños esta semana (${data.cumpleanos.length}):`,
     ...data.cumpleanos.map((r) => `- ${r.persona} (${r.cuando})`),
     '',
-    `Fichas incompletas: ${data.incompletos}`,
+    `Fichas incompletas (${fichas.length}):`,
+    ...(fichas.length ? fichas.map((nombre) => `- ${nombre}`) : ['- Ninguna']),
     '',
     `Archivos faltantes en disco (${nArchivos}):`,
     ...(nArchivos ? data.archivosFaltantes.map((r) => `- ${r.tipo} ${r.nombre}`) : ['- Ninguno']),
@@ -385,9 +396,7 @@ function armarMensaje(data) {
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:760px;">
         <tr>
           <td colspan="3" style="padding:4px 8px 18px;font-family:Segoe UI,Roboto,sans-serif;">
-            <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#5f7a76;font-weight:800;">INNAR</div>
-            <div style="font-size:28px;line-height:1.15;font-weight:800;color:#1c2b29;margin-top:4px;">Avisos del día</div>
-            <div style="margin-top:6px;color:#5f736f;font-size:14px;line-height:1.45;">Documentos, exámenes, preaviso u otrosí, y tareas. Cada grupo va en su recuadro.</div>
+            <div style="font-size:28px;line-height:1.15;font-weight:800;letter-spacing:.14em;color:#1c2b29;">AVISOS</div>
           </td>
         </tr>
         ${filaHtml(
@@ -451,9 +460,10 @@ function armarMensaje(data) {
           })
         )}
         <tr>
-          <td colspan="3" style="padding:10px 8px 0;font-family:Segoe UI,Roboto,sans-serif;color:#5f736f;font-size:13px;">
-            Fichas incompletas: <strong style="color:#1c2b29;">${data.incompletos}</strong>
-            <span style="color:#8aa09b;"> · Instituto Neurociencias de Nariño IPS S.A.S</span>
+          <td colspan="3" style="padding:16px 8px 0;font-family:Segoe UI,Roboto,sans-serif;">
+            <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#5f736f;font-weight:800;">Fichas incompletas</div>
+            <div style="margin-top:10px;">${nombresFichasHtml(fichas)}</div>
+            <div style="margin-top:8px;color:#8aa09b;font-size:12px;">Instituto Neurociencias de Nariño IPS S.A.S</div>
           </td>
         </tr>
       </table>
